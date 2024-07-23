@@ -86,16 +86,10 @@ class UsbVideoStreamer final {
   std::string statsSummaryString() const;
 
  private:
-  void printFrameFormats() const;
-  bool tryStreamCtrlByFormatAtFps(
-      const char* fourccFormat,
-      const uvc_frame_format uvcFrameFormat,
-      int32_t fps);
-  bool tryStreamCtrlByFormat(const char* fourccFormat, const uvc_frame_format uvcFrameFormat);
-
   uvc_context_t* uvcContext_{};
   uvc_device_handle_t* deviceHandle_{};
   uvc_stream_ctrl_t streamCtrl_{};
+  bool isStreamControlNegotiated_{false};
   uvc_stream_handle_t *streamHandle_{nullptr};
 
   ANativeWindow* previewWindow_{};

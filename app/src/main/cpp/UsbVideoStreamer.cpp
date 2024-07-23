@@ -89,15 +89,15 @@ UsbVideoStreamer::UsbVideoStreamer(
     captureFrameHeight_ = height;
     captureFrameFps_ = fps;
     captureFrameFormat_ = uvcFrameFormat_;
-
+    isStreamControlNegotiated_ = true;
     ULOGI(
         "uvc_get_stream_ctrl_format_size found for %dx%d@%dfps format: %d",
         width,
         height,
         fps,
         uvcFrameFormat_);
-    printFrameFormats();
   } else {
+    isStreamControlNegotiated_ = false;
     ULOGE(
         "uvc_get_stream_ctrl_format_size for %d %dx%d@%dfps failed %s",
         uvcFrameFormat_,
@@ -105,213 +105,11 @@ UsbVideoStreamer::UsbVideoStreamer(
         height,
         fps,
         uvc_strerror(res));
-    std::vector<std::pair<std::string, uvc_frame_format>> formatsToTry{};
-    const uvc_format_desc_t* format_desc = uvc_get_format_descs(deviceHandle_);
-    while (format_desc != nullptr) {
-      auto fourccFormat = std::string((char*)format_desc->fourccFormat);
-      ULOGI(
-          "format desc bDescriptorSubtype: %d, fourccFormat: (%4s)",
-          format_desc->bDescriptorSubtype,
-          format_desc->fourccFormat);
-      if (fourccFormat == "YUY2") {
-        formatsToTry.emplace_back("YUY2", UVC_FRAME_FORMAT_YUYV);
-      } else if (fourccFormat == "NV12") {
-        formatsToTry.emplace_back("NV12", UVC_FRAME_FORMAT_NV12);
-      } else if (fourccFormat == "MJPG") {
-        formatsToTry.emplace_back("MJPG", UVC_FRAME_FORMAT_MJPEG);
-      }
-      const uvc_frame_desc_t* frame_desc = format_desc->frame_descs;
-      while (frame_desc != nullptr) {
-        const int32_t frame_width = frame_desc->wWidth;
-        const int32_t frame_height = frame_desc->wHeight;
-        const int32_t frame_fps = 10000000 / frame_desc->dwDefaultFrameInterval;
-        ULOGI(
-            "   frame desc: (%4s) %dx%d %dfps",
-            format_desc->fourccFormat,
-            frame_width,
-            frame_height,
-            frame_fps);
-        frame_desc = frame_desc->next;
-      }
-      format_desc = format_desc->next;
-    }
-    bool found = false;
-    if (!found) {
-      for (auto& format_pair : formatsToTry) {
-        ULOGI("Trying with %s, %d format", format_pair.first.c_str(), format_pair.second);
-        if (tryStreamCtrlByFormatAtFps(format_pair.first.c_str(), format_pair.second, 60)) {
-          found = true;
-          break;
-        }
-      }
-    }
-    if (!found) {
-      for (auto& format_pair : formatsToTry) {
-        ULOGI("Trying with %s, %d format", format_pair.first.c_str(), format_pair.second);
-        if (tryStreamCtrlByFormat(format_pair.first.c_str(), format_pair.second)) {
-          found = true;
-          break;
-        }
-      }
-    }
-
-    if (!found) {
-      ULOGE("Could not resolve a suitable format to stream");
-    }
-  }
-}
-
-bool UsbVideoStreamer::tryStreamCtrlByFormatAtFps(
-    const char* fourccFormat,
-    const uvc_frame_format uvcFrameFormat,
-    const int32_t fps) {
-  const uvc_format_desc_t* format_desc = uvc_get_format_descs(deviceHandle_);
-  while (format_desc != nullptr) {
-    const char* four_cc_format = (char*)format_desc->fourccFormat;
-    ULOGI("memcmp: four_cc_format: (%4s) fourccFormat: (%4s)", fourccFormat, four_cc_format);
-    if (memcmp(fourccFormat, four_cc_format, 4) != 0) {
-      format_desc = format_desc->next;
-      continue;
-    }
-
-    const uvc_frame_desc_t* frame_desc = format_desc->frame_descs;
-    while (frame_desc != nullptr) {
-      const int32_t frame_width = frame_desc->wWidth;
-      const int32_t frame_height = frame_desc->wHeight;
-      const int32_t frame_fps = 10000000 / frame_desc->dwDefaultFrameInterval;
-      if (frame_fps != fps) {
-        frame_desc = frame_desc->next;
-        continue;
-      }
-      ULOGI(
-          "  tryStreamCtrlByFormatAndFps frame desc: (%4s) %dx%d %dfps",
-          format_desc->fourccFormat,
-          frame_width,
-          frame_height,
-          frame_fps);
-      ULOGE(
-          "Attempting fallback stream control for: (%4s) uvc_frame_format: %d %dx%d %dfps %p",
-          format_desc->fourccFormat,
-          uvcFrameFormat,
-          frame_width,
-          frame_height,
-          frame_fps,
-          &streamCtrl_);
-      auto res = uvc_get_stream_ctrl_format_size(
-          deviceHandle_,
-          &streamCtrl_, /* result stored in ctrl */
-          uvcFrameFormat,
-          frame_width,
-          frame_height,
-          frame_fps);
-      ULOGE("After uvc_get_stream_ctrl_format_size %d %s", res, uvc_strerror(res));
-      if (res == UVC_SUCCESS) {
-        captureFrameWidth_ = frame_width;
-        captureFrameHeight_ = frame_height;
-        captureFrameFps_ = frame_fps;
-        captureFrameFormat_ = uvcFrameFormat;
-        ULOGE(
-            "Setting fallback stream control for: (%4s) %dx%d %dfps",
-            format_desc->fourccFormat,
-            frame_width,
-            frame_height,
-            frame_fps);
-        return true;
-      }
-      frame_desc = frame_desc->next;
-    }
-    format_desc = format_desc->next;
-  }
-  return false;
-}
-
-bool UsbVideoStreamer::tryStreamCtrlByFormat(
-    const char* fourccFormat,
-    const uvc_frame_format uvcFrameFormat) {
-  const uvc_format_desc_t* format_desc = uvc_get_format_descs(deviceHandle_);
-  while (format_desc != nullptr) {
-    const char* four_cc_format = (char*)format_desc->fourccFormat;
-    ULOGI("memcmp: four_cc_format: (%4s) fourccFormat: (%4s)", fourccFormat, four_cc_format);
-    if (memcmp(fourccFormat, four_cc_format, 4) != 0) {
-      format_desc = format_desc->next;
-      continue;
-    }
-
-    const uvc_frame_desc_t* frame_desc = format_desc->frame_descs;
-    while (frame_desc != nullptr) {
-      const int32_t frame_width = frame_desc->wWidth;
-      const int32_t frame_height = frame_desc->wHeight;
-      const int32_t frame_fps = 10000000 / frame_desc->dwDefaultFrameInterval;
-      ULOGI(
-          "  tryStreamCtrlByFormat frame desc: (%4s) %dx%d %dfps",
-          format_desc->fourccFormat,
-          frame_width,
-          frame_height,
-          frame_fps);
-      ULOGE(
-          "Attempting fallback stream control for: (%4s) uvc_frame_format: %d %dx%d %dfps %p",
-          format_desc->fourccFormat,
-          uvcFrameFormat,
-          frame_width,
-          frame_height,
-          frame_fps,
-          &streamCtrl_);
-      auto res = uvc_get_stream_ctrl_format_size(
-          deviceHandle_,
-          &streamCtrl_, /* result stored in ctrl */
-          uvcFrameFormat,
-          frame_width,
-          frame_height,
-          frame_fps);
-      ULOGE("After uvc_get_stream_ctrl_format_size %d %s", res, uvc_strerror(res));
-      if (res == UVC_SUCCESS) {
-        captureFrameWidth_ = frame_width;
-        captureFrameHeight_ = frame_height;
-        captureFrameFps_ = frame_fps;
-        captureFrameFormat_ = uvcFrameFormat;
-        ULOGE(
-            "Setting fallback stream control for: (%4s) %dx%d %dfps",
-            format_desc->fourccFormat,
-            frame_width,
-            frame_height,
-            frame_fps);
-        return true;
-      }
-      frame_desc = frame_desc->next;
-    }
-    format_desc = format_desc->next;
-  }
-  return false;
-}
-
-void UsbVideoStreamer::printFrameFormats() const {
-  const uvc_format_desc_t* format_desc = uvc_get_format_descs(deviceHandle_);
-  ULOGI("------------ supported formats and frame descriptors ------------");
-  while (format_desc != nullptr) {
-    auto fourccFormat = std::string((char*)format_desc->fourccFormat);
-    ULOGI(
-        "format desc bDescriptorSubtype: %d, fourccFormat: (%4s)",
-        format_desc->bDescriptorSubtype,
-        format_desc->fourccFormat);
-    const uvc_frame_desc_t* frame_desc = format_desc->frame_descs;
-    while (frame_desc != nullptr) {
-      const int32_t frame_width = frame_desc->wWidth;
-      const int32_t frame_height = frame_desc->wHeight;
-      const int32_t frame_fps = 10000000 / frame_desc->dwDefaultFrameInterval;
-      ULOGI(
-          "   frame desc: (%4s) %dx%d %dfps",
-          format_desc->fourccFormat,
-          frame_width,
-          frame_height,
-          frame_fps);
-      frame_desc = frame_desc->next;
-    }
-    format_desc = format_desc->next;
   }
 }
 
 bool UsbVideoStreamer::configureOutput(ANativeWindow* previewWindow) {
-  if (streamCtrl_.bInterfaceNumber == 0) {
+  if (!isStreamControlNegotiated_) {
     return false;
   }
   if (previewWindow_ == nullptr) {
