@@ -50,7 +50,7 @@ add_library(${CMAKE_PROJECT_NAME} SHARED
         UsbVideoNativeLibrary.cpp
         UsbAudioStreamer.cpp
         UsbVideoStreamer.cpp
-        native-lib.cpp)
+        )
 
 # Specifies libraries CMake should link to your target library. You
 # can link libraries from various origins, such as libraries defined in this
