@@ -22,12 +22,13 @@ limitations under the License.
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:clickable="true"
-    tools:ignore="KeyboardInaccessibleWidget,MissingClass,StellaXmlColorUsageDetector"
+    tools:ignore="KeyboardInaccessibleWidget,MissingClass"
     >
   <com.meta.usbvideo.ui.VideoContainerView
       android:id="@+id/video_container"
       android:layout_width="match_parent"
       android:layout_height="match_parent"
+      android:background="@android:color/black"
       app:layout_constraintStart_toStartOf="parent"
       app:layout_constraintEnd_toEndOf="parent"
       app:layout_constraintTop_toTopOf="parent"

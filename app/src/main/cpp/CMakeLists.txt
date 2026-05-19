@@ -28,6 +28,9 @@ set(CMAKE_CXX_STANDARD 20)
 # build script scope).
 project("usbvideo")
 
+# 16 KB page size compatibility for Android 15+ (API 35+)
+add_link_options(-Wl,-z,max-page-size=16384)
+
 add_subdirectory(libusb)
 add_subdirectory(libuvc)
 add_subdirectory(libyuv)

@@ -27,6 +27,7 @@ inline aaudio_format_t convertFormat(int jAudioFormat) {
       return AAUDIO_FORMAT_PCM_I16;
   }
 }
+
 inline aaudio_performance_mode_t convertPerfMode(int jPerfMode) {
   switch (jPerfMode) {
     case 0:

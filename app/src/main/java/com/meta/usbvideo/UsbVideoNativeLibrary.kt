@@ -21,6 +21,7 @@ import android.media.AudioTrack
 import android.view.Surface
 import com.meta.usbvideo.usb.AudioStreamingConnection
 import com.meta.usbvideo.usb.AudioStreamingFormatTypeDescriptor
+import com.meta.usbvideo.usb.LibuvcFrameFormat
 import com.meta.usbvideo.usb.VideoFormat
 import com.meta.usbvideo.usb.VideoStreamingConnection
 
@@ -30,6 +31,54 @@ enum class UsbSpeed {
   Full,
   High,
   Super,
+}
+
+enum class VideoStreamerState {
+  INITIAL,
+  INITIALIZED,
+  CONFIGURED,
+  STARTED,
+  STOPPED,
+  INIT_FAILED,
+  CONFIGURE_FAILED,
+  START_FAILED,
+  STOP_FAILED,
+}
+
+@androidx.annotation.Keep
+class AudioStatsSummary {
+  var jAudioFormat: Int = 0
+  var channelCount: Int = 0
+  var samplingFrequency: Int = 0
+
+  @androidx.annotation.Keep
+  fun update(jAudioFormat: Int, channelCount: Int, samplingFrequency: Int) {
+    this.jAudioFormat = jAudioFormat
+    this.channelCount = channelCount
+    this.samplingFrequency = samplingFrequency
+  }
+
+  fun isValid(): Boolean = jAudioFormat >= 0 && channelCount >= 0 && samplingFrequency >= 0
+}
+
+@androidx.annotation.Keep
+class VideoStatsSummary {
+  var captureFrameFormat: LibuvcFrameFormat? = null
+  var captureFrameWidth: Int = 0
+  var captureFrameHeight: Int = 0
+  var fps: Int = 0
+
+  @androidx.annotation.Keep
+  fun update(captureFrameFormat: Int, captureFrameWidth: Int, captureFrameHeight: Int, fps: Int) {
+    this.captureFrameFormat =
+        if (captureFrameFormat < 0) null else LibuvcFrameFormat.values()[captureFrameFormat]
+    this.captureFrameWidth = captureFrameWidth
+    this.captureFrameHeight = captureFrameHeight
+    this.fps = fps
+  }
+
+  fun isValid(): Boolean =
+      captureFrameFormat != null && captureFrameWidth >= 0 && captureFrameHeight >= 0 && fps >= 0
 }
 
 object UsbVideoNativeLibrary {
@@ -43,20 +92,23 @@ object UsbVideoNativeLibrary {
       audioStreamingConnection: AudioStreamingConnection,
   ): Pair<Boolean, String> {
     if (!audioStreamingConnection.supportsAudioStreaming) {
-      return false to "No Audio Streaming Interface"
+      return false to context.getString(R.string.no_audio_interface)
     }
 
     val audioFormat =
-        audioStreamingConnection.supportedAudioFormat ?: return false to "No Supported Audio Format"
+        audioStreamingConnection.supportedAudioFormat
+            ?: return false to context.getString(R.string.no_audio_format)
 
     if (!audioStreamingConnection.hasFormatTypeDescriptor) {
-      return false to "No Audio Streaming Format Descriptor"
+      return false to context.getString(R.string.no_audio_format)
     }
 
     val format: AudioStreamingFormatTypeDescriptor = audioStreamingConnection.formatTypeDescriptor
 
     val channelCount = format.bNrChannels
-    val samplingFrequency = format.tSamFreq.firstOrNull() ?: return false to "No Sample Rate"
+    val samplingFrequency =
+        format.tSamFreq.firstOrNull()
+            ?: return false to context.getString(R.string.no_audio_sampling)
     val subFrameSize = format.bSubFrameSize
     val audioManager: AudioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     val outputFramesPerBuffer =
@@ -64,18 +116,20 @@ object UsbVideoNativeLibrary {
 
     val deviceFD = audioStreamingConnection.deviceFD
 
-    return if (connectUsbAudioStreamingNative(
-        deviceFD,
-        audioFormat,
-        samplingFrequency,
-        subFrameSize,
-        channelCount,
-        AudioTrack.PERFORMANCE_MODE_LOW_LATENCY,
-        outputFramesPerBuffer,
-    )) {
-      true to "Success"
+    return if (
+        connectUsbAudioStreamingNative(
+            deviceFD,
+            audioFormat,
+            samplingFrequency,
+            subFrameSize,
+            channelCount,
+            AudioTrack.PERFORMANCE_MODE_LOW_LATENCY,
+            outputFramesPerBuffer,
+        )
+    ) {
+      true to context.getString(R.string.success)
     } else {
-      false to "Native audio player failure. Check logs for errors."
+      false to context.getString(R.string.usb_connect_failure)
     }
   }
 
@@ -96,37 +150,49 @@ object UsbVideoNativeLibrary {
   external fun stopUsbAudioStreamingNative()
 
   fun connectUsbVideoStreaming(
+      context: Context,
       videoStreamingConnection: VideoStreamingConnection,
-      surface: Surface,
       frameFormat: VideoFormat?,
   ): Pair<Boolean, String> {
-    val videoFormat = frameFormat ?: return false to "No supported video format"
+    val videoFormat = frameFormat ?: return false to context.getString(R.string.no_video_format)
     val deviceFD = videoStreamingConnection.deviceFD
-    return if (connectUsbVideoStreamingNative(
-        deviceFD,
-        videoFormat.width,
-        videoFormat.height,
-        videoFormat.fps,
-        videoFormat.toLibuvcFrameFormat().ordinal,
-        surface,
-    )) {
-      true to "Success"
-    } else {
-      false to "Native video player failure. Check logs for errors."
+
+    val configuredVideoStreamingState =
+        connectUsbVideoStreamingNative(
+            deviceFD,
+            videoFormat.width,
+            videoFormat.height,
+            videoFormat.fps,
+            videoFormat.toLibuvcFrameFormat().ordinal,
+        )
+    return when (VideoStreamerState.values()[configuredVideoStreamingState]) {
+      VideoStreamerState.CONFIGURED -> true to context.getString(R.string.success)
+      VideoStreamerState.CONFIGURE_FAILED ->
+          false to context.getString(R.string.video_format_configure_failure)
+      else -> {
+        false to context.getString(R.string.usb_connect_failure)
+      }
     }
   }
 
   external fun connectUsbVideoStreamingNative(
-    deviceFD: Int,
-    width: Int,
-    height: Int,
-    fps: Int,
-    libuvcFrameFormat: Int,
-    surface: Surface,
-  ): Boolean
-  external fun startUsbVideoStreamingNative(): Boolean
+      deviceFD: Int,
+      width: Int,
+      height: Int,
+      fps: Int,
+      libuvcFrameFormat: Int,
+  ): Int
+
+  external fun startUsbVideoStreamingNative(surface: Surface): Boolean
+
   external fun stopUsbVideoStreamingNative()
+
   external fun disconnectUsbVideoStreamingNative()
 
   external fun streamingStatsSummaryString(): String
+
+  external fun updateStreamingStatsSummary(
+      audioStatsSummary: AudioStatsSummary,
+      videoStatsSummary: VideoStatsSummary,
+  )
 }

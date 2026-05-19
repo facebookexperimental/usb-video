@@ -83,7 +83,7 @@ class VideoStreamingConnectionTests {
           .map { it.toInt(16).toByte() }
           .toByteArray()
 
-    val videoStreamingConnection = VideoStreamingConnection(usbDevice, usbDeviceConnection)
+    val videoStreamingConnection = VideoStreamingConnection(usbDevice, usbDeviceConnection, onClose = {})
     val videoFormat: VideoFormat? = videoStreamingConnection.findBestVideoFormat(width, height)
     assertNotNull(videoFormat)
     assertEquals(expected = width, videoFormat.width)

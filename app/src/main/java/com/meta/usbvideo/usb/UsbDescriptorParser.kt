@@ -224,3 +224,7 @@ inline fun ByteBuffer.getWInt(offset: Int): Int = getShort(offset).toInt() and 0
 inline fun ByteBuffer.getBInt(): Int = get().toInt() and 0xff
 
 inline fun ByteBuffer.getBInt(offset: Int): Int = get(offset).toInt() and 0xff
+
+fun ByteBuffer.getGuidFourccFormat(offset: Int): String {
+  return String(byteArrayOf(get(offset), get(offset + 1), get(offset + 2), get(offset + 3)))
+}

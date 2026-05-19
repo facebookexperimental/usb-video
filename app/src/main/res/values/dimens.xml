@@ -16,4 +16,5 @@ limitations under the License.
 -->
 <resources>
   <dimen name="status_line_horizontal_margin">36dp</dimen>
+  <dimen name="dropdownWidth">126dp</dimen>
 </resources>

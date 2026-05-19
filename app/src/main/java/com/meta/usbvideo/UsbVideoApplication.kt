@@ -14,15 +14,33 @@
  * limitations under the License.
  */
 package com.meta.usbvideo
-
 import android.app.Application
 import com.meta.usbvideo.usb.UsbMonitor
+import kotlinx.coroutines.cancel
 
 class UsbVideoApplication : Application() {
 
   override fun onCreate() {
     super.onCreate()
-    UsbMonitor.init(this)
     System.loadLibrary("usbvideo")
+    usbmon =
+        UsbMonitor(
+            this,
+            applicationScope,
+            onVideoClose = {
+              UsbVideoNativeLibrary.stopUsbVideoStreamingNative()
+              UsbVideoNativeLibrary.disconnectUsbVideoStreamingNative()
+            },
+            onAudioClose = {
+              UsbVideoNativeLibrary.stopUsbAudioStreamingNative()
+              UsbVideoNativeLibrary.disconnectUsbAudioStreamingNative()
+            },
+        )
+  }
+
+  override fun onTerminate() {
+    super.onTerminate()
+    usbmon?.stop()
+    applicationScope.cancel()
   }
 }

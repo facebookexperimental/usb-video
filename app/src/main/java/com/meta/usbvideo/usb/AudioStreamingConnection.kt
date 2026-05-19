@@ -19,7 +19,6 @@ import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbDeviceConnection
 import android.media.AudioFormat
 import android.util.Log
-import com.meta.usbvideo.UsbVideoNativeLibrary
 import com.meta.usbvideo.eventloop.EventLooper
 import java.io.Closeable
 import java.lang.Exception
@@ -30,6 +29,7 @@ private const val USB_CLASS_AUDIO = 0x01
 private const val USB_SUBCLASS_AUDIO_STREAMING = 0x02
 
 private const val UAC_FORMAT_TYPE_I_PCM = 0x1
+private const val UAC_FORMAT_TYPE_I_PCM8 = 0x2
 private const val UAC_FORMAT_TYPE_I_IEEE_FLOAT = 0x3
 
 private const val UAC_AS_GENERAL = 0x1
@@ -41,6 +41,7 @@ private const val TAG = "AudioStreamingConnection"
 class AudioStreamingConnection(
     private val usbDevice: UsbDevice,
     private val usbDeviceConnection: UsbDeviceConnection,
+    private val onClose: () -> Unit,
 ) : Closeable {
   val deviceFD: Int = usbDeviceConnection.fileDescriptor
 
@@ -63,7 +64,8 @@ class AudioStreamingConnection(
             bBitResolution: ${formatTypeDescriptor.bBitResolution} 
             tSamFreq: ${formatTypeDescriptor.tSamFreq.joinToString(", ")} 
           """
-                .trimIndent())
+                .trimIndent(),
+        )
       }
     } catch (e: Exception) {
       Log.e(TAG, "Error in parsing USB descriptors for audio streaming", e)
@@ -90,8 +92,10 @@ class AudioStreamingConnection(
     for (descriptor in UsbDescriptorParser(rawDescriptors).descriptors()) {
       when {
         !::interfaceDescriptor.isInitialized ->
-            if (descriptor.isInterfaceDescriptorAtLeastOneEndpoint() &&
-                descriptor.isInterfaceDescriptorWithAudioStreaming()) {
+            if (
+                descriptor.isInterfaceDescriptorAtLeastOneEndpoint() &&
+                    descriptor.isInterfaceDescriptorWithAudioStreaming()
+            ) {
               Log.i(TAG, "Found device interface with audio streaming and endpoint > 0")
               interfaceDescriptor = InterfaceDescriptor(descriptor.buffer)
             }
@@ -117,9 +121,11 @@ class AudioStreamingConnection(
   }
 
   override fun close() {
-    Log.e(TAG, "close: disconnectUsbAudioStreamingNative", )
-    EventLooper.post { UsbVideoNativeLibrary.disconnectUsbAudioStreamingNative() }
-    usbDeviceConnection.close()
+    Log.i(TAG, "close")
+    EventLooper.post {
+      onClose.invoke()
+      usbDeviceConnection.close()
+    }
   }
 }
 
@@ -167,11 +173,14 @@ class AudioStreamingGeneralDescriptor(pack: ByteBuffer) {
   val wFormatTag: Int = pack.getWInt()
 
   fun isSupportedFormat(): Boolean =
-      (wFormatTag == UAC_FORMAT_TYPE_I_PCM || wFormatTag == UAC_FORMAT_TYPE_I_IEEE_FLOAT)
+      (wFormatTag == UAC_FORMAT_TYPE_I_PCM ||
+          wFormatTag == UAC_FORMAT_TYPE_I_PCM8 ||
+          wFormatTag == UAC_FORMAT_TYPE_I_IEEE_FLOAT)
 
   fun toAudioFormat(): Int =
       when (wFormatTag) {
         UAC_FORMAT_TYPE_I_PCM -> AudioFormat.ENCODING_PCM_16BIT
+        UAC_FORMAT_TYPE_I_PCM8 -> AudioFormat.ENCODING_PCM_8BIT
         UAC_FORMAT_TYPE_I_IEEE_FLOAT -> AudioFormat.ENCODING_PCM_FLOAT
         else -> error("Unsupported audio format $wFormatTag")
       }
