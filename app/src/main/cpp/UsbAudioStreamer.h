@@ -26,7 +26,6 @@
 
 #include <algorithm>
 #include <condition_variable>
-#include <iterator>
 #include <mutex>
 
 #include "RingBuffer.h"
@@ -43,6 +42,12 @@ enum class StreamerState : int {
   DESTROYING,
   DESTROYED,
   ERROR,
+};
+
+struct AudioStatsSummary {
+  uint32_t jAudioFormat;
+  uint32_t channelCount;
+  uint32_t samplingFrequency;
 };
 
 struct UsbAudioStreamerStats {
@@ -69,18 +74,13 @@ struct UsbAudioStreamerStats {
 class UsbAudioStreamer;
 
 struct TransferUserData {
-
-  TransferUserData(libusb_transfer* transfer_, UsbAudioStreamer* streamer_, bool isSubmitted_):
-  transfer(transfer_),
-  streamer(streamer_),
-  isSubmitted(isSubmitted_) {
-  }
+  TransferUserData(libusb_transfer* transfer_, UsbAudioStreamer* streamer_, bool isSubmitted_)
+      : transfer(transfer_), streamer(streamer_), isSubmitted(isSubmitted_) {}
   libusb_transfer* transfer;
   UsbAudioStreamer* streamer;
   bool isSubmitted;
 
   ~TransferUserData() {
-
     libusb_free_transfer(transfer);
     streamer = nullptr;
   }
@@ -141,6 +141,7 @@ class UsbAudioStreamer final {
   bool stop();
   uint32_t samplesFromByteCount(uint32_t bytes) const;
   std::string statsSummaryString() const;
+  [[nodiscard]] AudioStatsSummary statsSummary() const;
   bool ensureTransferRequests();
 
  private:
@@ -158,8 +159,7 @@ class UsbAudioStreamer final {
   uint8_t channelCount_{};
   int32_t framesPerBurst_{};
   int32_t bufferCapacityInFrames_{};
-  const struct libusb_init_option libusbOptions = {.option = LIBUSB_OPTION_NO_DEVICE_DISCOVERY};
-  timeval libusbEventsTimeout_{0, 100}; // 100 microseconds
+  timeval libusbEventsTimeout_{.tv_sec = 0, .tv_usec = 100}; // 100 microseconds
   std::unique_ptr<RingBufferPcm> ringBuffer_{std::make_unique<RingBufferPcm>(3072)};
   std::atomic<StreamerState> state_{StreamerState::INITIAL};
   std::mutex mutex_;

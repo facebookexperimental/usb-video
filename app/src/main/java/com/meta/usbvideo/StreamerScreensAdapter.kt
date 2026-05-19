@@ -24,15 +24,20 @@ import androidx.recyclerview.widget.RecyclerView
 
 sealed class StreamerScreenViewHolder(rootView: View) : RecyclerView.ViewHolder(rootView)
 
-class StreamerScreensAdapter(
-    val lifecycleOwner: LifecycleOwner,
-    private val streamerViewModel: StreamerViewModel,
-) : RecyclerView.Adapter<StreamerScreenViewHolder>() {
+class ConnectCaptureCardViewHolder(rootView: View) : StreamerScreenViewHolder(rootView)
 
-  var screens: List<StreamerScreen> = listOf(StreamerScreen.Status)
+class StreamerScreensAdapter(
+    private val lifecycleOwner: LifecycleOwner,
+    private val streamerViewModel: StreamerViewModel,
+    var screens: List<StreamerScreen>,
+) : RecyclerView.Adapter<StreamerScreenViewHolder>() {
 
   override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): StreamerScreenViewHolder {
     return when (StreamerScreen.values()[viewType]) {
+      StreamerScreen.ConnectCaptureCardCTA ->
+          ConnectCaptureCardViewHolder(
+              parent.inflate(R.layout.connect_capture_card),
+          )
       StreamerScreen.Status ->
           StatusScreenViewHolder(
               parent.inflate(R.layout.status_screen),
@@ -51,7 +56,16 @@ class StreamerScreensAdapter(
 
   override fun onBindViewHolder(holder: StreamerScreenViewHolder, position: Int) {
     when (holder) {
-      is StatusScreenViewHolder -> holder.observeViewModel(lifecycleOwner, streamerViewModel)
+      is ConnectCaptureCardViewHolder -> Unit
+      is StatusScreenViewHolder -> holder.bindModel(lifecycleOwner, streamerViewModel)
+      is StreamingViewHolder -> holder.bindModel()
+    }
+  }
+
+  override fun onViewRecycled(holder: StreamerScreenViewHolder) {
+    when (holder) {
+      is ConnectCaptureCardViewHolder -> Unit
+      is StatusScreenViewHolder -> holder.unbindModel()
       is StreamingViewHolder -> Unit
     }
   }
@@ -61,7 +75,7 @@ class StreamerScreensAdapter(
   }
 
   override fun getItemId(position: Int): Long {
-    return position.toLong()
+    return screens.get(position).ordinal.toLong()
   }
 
   override fun getItemViewType(position: Int): Int {

@@ -25,6 +25,46 @@ limitations under the License.
     <item name="windowActionBar">false</item>
     <item name="windowNoTitle">true</item>
     <item name="android:windowFullscreen">true</item>
+    <item name="colorPrimary">#90CAF9</item>
+    <item name="colorOnPrimary">#1C1C1E</item>
+    <item name="colorError">#EF5350</item>
+    <item name="android:colorBackground">#1C1C1E</item>
+    <item name="android:textColorPrimary">#FFFFFF</item>
+    <item name="android:textColorSecondary">#B0BEC5</item>
+    <item name="colorSecondary">#B0BEC5</item>
+    <item name="cardBackgroundColor">#2C2C2E</item>
   </style>
+
+  <style name="status_title_text">
+    <item name="android:textColor">?colorPrimary</item>
+    <item name="android:textSize">14sp</item>
+    <item name="android:fontFamily">sans-serif</item>
+    <item name="android:textStyle">bold</item>
+    <item name="android:lineHeight">20sp</item>
+  </style>
+
+  <style name="status_subtitle_text">
+    <item name="android:textSize">11sp</item>
+    <item name="android:textColor">?colorSecondary</item>
+    <item name="android:fontFamily">sans-serif</item>
+    <item name="android:lineHeight">16sp</item>
+  </style>
+
+  <style name="status_subtitle_warn">
+    <item name="android:textSize">11sp</item>
+    <item name="android:textColor">?colorError</item>
+    <item name="android:fontFamily">sans-serif</item>
+    <item name="android:lineHeight">16sp</item>
+  </style>
+
+  <style name="status_subtitle_error">
+    <item name="android:textSize">11sp</item>
+    <item name="android:textColor">?colorError</item>
+    <item name="android:fontFamily">sans-serif</item>
+    <item name="android:lineHeight">16sp</item>
+  </style>
+
+  <style name="Body1" parent="TextAppearance.AppCompat.Body1"/>
+  <style name="H3" parent="TextAppearance.AppCompat.Headline"/>
 
 </resources>

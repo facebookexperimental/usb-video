@@ -23,10 +23,15 @@
 
 #include <chrono>
 #include <cstdint>
-#include <memory>
-#include <vector>
 
 using namespace std::chrono;
+
+struct VideoStatsSummary {
+  uvc_frame_format captureFrameFormat;
+  int32_t captureFrameWidth;
+  int32_t captureFrameHeight;
+  int32_t fps;
+};
 
 struct UsbVideoStreamerStats {
   u_int64_t total_bytes = 0;
@@ -69,36 +74,48 @@ struct CaptureFrameCallbackData {
   UsbVideoStreamerStats stats;
 };
 
+enum class VideoStreamerState : uint8_t {
+  INITIAL,
+  INITIALIZED,
+  CONFIGURED,
+  STARTED,
+  STOPPED,
+  INIT_FAILED,
+  CONFIGURE_FAILED,
+  START_FAILED,
+  STOP_FAILED,
+};
+
 class UsbVideoStreamer final {
  public:
   static void captureFrameCallback(uvc_frame_t* frame, void* user_data);
-  UsbVideoStreamer(
-      intptr_t deviceFD,
-      int32_t width,
-      int32_t height,
-      int32_t fps,
-      uvc_frame_format uvcFrameFormat);
+  explicit UsbVideoStreamer(intptr_t deviceFD);
   ~UsbVideoStreamer();
-  bool configureOutput(ANativeWindow* previewWindow);
-  bool start();
+  VideoStreamerState
+  configure(int32_t width, int32_t height, int32_t fps, uvc_frame_format uvcFrameFormat);
+  bool start(ANativeWindow* previewWindow);
   bool stop();
-  bool isRunning() const;
+  [[nodiscard]] VideoStreamerState getState() const {
+    return state_;
+  }
+  [[nodiscard]] intptr_t getDeviceFD() const {
+    return deviceFD_;
+  }
   std::string statsSummaryString() const;
+  [[nodiscard]] VideoStatsSummary statsSummary() const;
 
  private:
+  void printFrameFormats() const;
+
   uvc_context_t* uvcContext_{};
   uvc_device_handle_t* deviceHandle_{};
   uvc_stream_ctrl_t streamCtrl_{};
-  bool isStreamControlNegotiated_{false};
-  uvc_stream_handle_t *streamHandle_{nullptr};
+  uvc_stream_handle_t* streamHandle_{nullptr};
 
   ANativeWindow* previewWindow_{};
 
+  VideoStreamerState state_{VideoStreamerState::INITIAL};
   intptr_t deviceFD_;
-  int32_t width_;
-  int32_t height_;
-  int32_t fps_;
-  uvc_frame_format uvcFrameFormat_;
 
   int32_t captureFrameWidth_{};
   int32_t captureFrameHeight_{};

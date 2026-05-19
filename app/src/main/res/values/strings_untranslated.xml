@@ -14,34 +14,80 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 -->
-<resources>
+<resources
+    xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://schemas.android.com/apk/res-auto"
+
+    >
   <!-- Note: this file is not included in i18n. Use strings.xml for your translatable strings. -->
   <string name="app_name" translatable="false">USB Video</string>
-  <string name="app_description" translatable="false">Big screen gaming and entertainment</string>
-  <string name="app_requirements" translatable="false">A USB capture card and HDMI/DisplayPort source is required.</string>
-  <string name="app_permissions_explanation" translatable="false">❓Camera and Record Audio permissions are required to operate USB capture card.</string>
-  <string name="app_permissions_granted" translatable="false">✔ App permissions granted</string>
-  <string name="app_permissions_denied" translatable="false">✖ Missing Camera and Record Audio permissions required to operate USB capture card. Open your settings to change this under Apps > Installed > USB Video</string>
-  <string name="camera_permission_denied" translatable="false">✖ Missing Camera permission to operate USB capture card. Open your settings to change this under Apps > Installed > </string>
-  <string name="record_audio_permission_denied" translatable="false">✖ Missing Record Audio permission to operate USB capture card. Open your settings to change this under Apps > Installed > USB Video</string>
-  <string name="start_streaming" translatable="false">Start Streaming</string>
-  <string name="device_connected" translatable="false">✔ USB capture card connected</string>
-  <string name="device_connected_with_details" translatable="false">✔ Connected to %1$s at %2$s Speed</string>
-  <string name="audio_streaming_wait_state" translatable="false">Starting audio…</string>
-  <string name="audio_streaming_success" translatable="false">✔ Audio streaming</string>
-  <string name="audio_streaming_failure" translatable="false">✖ Audio streaming failure. %1$s</string>
-  <string name="audio_streaming_stopped" translatable="false">✖ Audio streaming stopped.</string>
-  <string name="video_streaming_wait_state" translatable="false">Starting video…</string>
-  <string name="video_streaming_success" translatable="false">✔ Video streaming</string>
-  <string name="video_streaming_failure" translatable="false">✖ Video streaming failure.  %1$s</string>
-  <string name="video_streaming_stopped" translatable="false">✖ Video streaming stopped.</string>
-  <string name="uvc_device_found" translatable="false">✔ USB capture card detected</string>
-  <string name="uvc_device_not_found" translatable="false">✖ No USB capture card detected</string>
-  <string name="uvc_device_attached" translatable="false">✔ USB capture card detected</string>
-  <string name="uvc_device_detached" translatable="false">✖ USB capture card disconnected</string>
-  <string name="uvc_device_permission_denied" translatable="false">✖ USB permission denied</string>
-  <string name="uvc_device_permission_granted" translatable="false">✔ USB device permission granted</string>
-  <string name="uvc_device_permission_required" translatable="false">❓USB device permission required</string>
-  <string name="uvc_device_permission_requested" translatable="false">❓USB device permission requested</string>
-  <string name="streaming_stats_toggle_tip" translatable="false">Tap on screen to toggle stats</string>
+  <string name="connect_device_title" description="Title of connect a UVC device screen">Connect your device</string>
+  <string name="app_requirements" description="Call to action to connect a USB capture card when no usb device is connected.">Plug in the USB-C output from your capture card.</string>
+  <string name="unmute_mic_tip" description="Tip to unmute microphone to proceed with checking USB device permission.">USB capture card relies on microphone settings to connect and capture audio. Please unmute microphone in Settings to proceed.</string>
+  <string name="device_connected_with_name_by_manufacturer" description="Device connected message with {product} and {manufacturer} name">Connected to <xliff:g id="product">%1$s</xliff:g> by <xliff:g id="manufacturer">%2$s</xliff:g></string>
+  <string name="device_connected_with_details" description="Device connected message with {product} name and {usb_speed}">Connected to <xliff:g id="product">%1$s</xliff:g> at <xliff:g id="usb_speed">%2$s</xliff:g>  Speed</string>
+  <string name="audio_streaming_failure" description="Audio streaming failure {message}">Audio streaming failure.<xliff:g id="message">%1$s</xliff:g></string>
+  <string name="usb_video_streaming_started" description="Message to show that video streaming have started successfully.">Video streaming started.</string>
+  <string name="video_streaming_failed_start" description="Video streaming failed to start message">Video streaming failed to start.</string>
+  <string name="video_streaming_failure" description="Video streaming failure {message}">Video streaming failure. <xliff:g id="message">%1$s</xliff:g></string>
+  <string name="uvc_device_not_found" description="Message when no USB capture card is detected">No USB capture card detected</string>
+  <string name="device_attached_with_name_by_manufacturer" description="Message when a device is attached with {product} and {manufacturer} name">Detected <xliff:g id="product">%1$s</xliff:g> by <xliff:g id="manufacturer">%2$s</xliff:g></string>
+  <string name="uvc_device_detached" description="Message when a USB capture card is disconnected">USB capture card disconnected</string>
+  <string name="uvc_device_permission_denied" description="Message when USB permission is denied">USB permission denied</string>
+  <string name="uvc_device_permission_granted" description="Message when USB permission is granted">USB device permission granted</string>
+  <string name="uvc_device_permission_required_for_name_by_manufacturer" description="Message when USB permission is required for a device with {product} and {manufacturer} name">USB permission required to access <xliff:g id="product">%1$s</xliff:g> by <xliff:g id="manufacturer">%2$s</xliff:g></string>
+  <string name="uvc_camera_and_record_permission_requirement" description="Message about Camera and Record Audio permission requirements to access UVC device {product} by {manufacturer} name">Camera and Record Audio permissions are required to access <xliff:g id="product">%1$s</xliff:g> by <xliff:g id="manufacturer">%2$s</xliff:g>.</string>
+  <string name="uvc_device_permission_requested" description="Message when USB permission is requested">USB device permission requested</string>
+  <string name="start_streaming_wait_state" description="Message when streaming start has been initiated and waiting for operation to complete.">Starting streaming…</string>
+  <string name="uvc_streaming_stopping" description="Message when streaming stop has been initiated and waiting for operation to complete.">Stopping streaming…</string>
+  <string name="uvc_streaming_stopped" description="Message when streaming has stopped">Streaming stopped.</string>
+  <string name="streaming_stats_toggle_tip" description="Tip to tap on screen to toggle streaming stats on or off.">Tap on screen to toggle stats</string>
+  <string name="video_streaming_low_fps_warn" description="Warning message for low FPS {video_format_size_and_fps}">⚠ Expect degraded performance with <xliff:g id="video_format_size_and_fps">%1$s</xliff:g>.</string>
+  <string name="expect_degraded_performance" description="Message to expect degraded performance for {usb_speed}">⚠ Detected USB <xliff:g id="usb_speed">%1$s</xliff:g> connectivity. Expect degraded performance. Please make sure to use USB 3.0 SuperSpeed compatible capture card and connectors.</string>
+  <string name="video_streaming_format_not_found" description="Message when no supported video format is found">No supported format found.</string>
+  <string name="select_video_format" description="Title of the video format selector">Select a capture video frame format</string>
+  <string name="video_format_configure_failure" description="Message when video format negotiation fails with the USB device.">Video frame format negotiation error. Please try another setting.</string>
+  <string name="start_streaming" description="Button label to start streaming">Start Streaming</string>
+  <string name="setup_explanation" description="Explanation for setup">Checklist to connect with the USB Capture card</string>
+  <string name="camera" description="Heading of camera permission item">Camera</string>
+  <string name="camera_permission_explanation" description="Explanation of why camera permission is required.">Camera permission is required to connect UVC device and capture video.</string>
+  <string name="camera_permission_denied" description="Message when camera permission is denied">Camera permission is denied. If you don\'t see a permission prompt, please grant the permission in the Settings app or reinstall app to start fresh.</string>
+  <string name="record_audio" description="Heading of record audio permission item">Record Audio</string>
+  <string name="record_audio_explanation" description="Explanation of why record audio permission is required.">Record Audio permission is required to connect UVC device and capture audio.</string>
+  <string name="record_audio_permission_denied" description="Message when record audio permission is denied">Record Audio permission is denied. If you don\'t see a permission prompt, please grant the permission in the Settings app or reinstall app to start fresh.</string>
+  <string name="usb" description="Heading of USB Device item">USB</string>
+  <string name="success" description="Label for success">Success</string>
+  <string name="usb_connect_failure" description="Message when USB connection fails">Please reconnect capture card and try again.</string>
+  <string name="no_audio_interface" description="Message when no audio interface is found">Audio interface not found.</string>
+  <string name="no_audio_format" description="Message when no supported audio format is found">No supported audio format.</string>
+  <string name="no_audio_sampling" description="Message when no audio sampling rate is found">Audio sampling rate not found.</string>
+  <string name="no_video_interface" description="Message when no video interface is found">Video interface not found.</string>
+  <string name="no_video_format" description="Message when no supported video format is found">No supported video format.</string>
+  <string name="usb_speed_super_speed" description="Speed of USB 3.0 devices. Refers to transfer speed of 5Gbps. This string is defined by the USB specification.">SuperSpeed</string>
+  <string name="usb_speed_high_speed" description="Speed of USB 2.0 devices. Refers to transfer speed of 480 Mbps. This string is defined by the USB specification.">Hi-Speed</string>
+  <string name="usb_speed_full_speed" description="Speed of USB 1.1 devices. Refers to transfer speed of 12 Mbps. This string is defined by the USB specification.">Full Speed</string>
+  <string name="usb_speed_low_speed" description="Speed of USB 1.0 devices. Refers to transfer speed of 1.5 Mbps. This string is defined by the USB specification.">Low Speed</string>
+
+  <string name="audio_format_pcm_8" description="PCM8 audio format.">PCM8</string>
+  <string name="audio_format_pcm_16" description="PCM16 audio format.">PCM16</string>
+  <string name="audio_format_pcm_float" description="PCM Float audio format.">PCM Float</string>
+  <string name="audio_format_unknown" description="Unknown audio format.">Unknown</string>
+
+  <string name="video_fourcc_format_YUYV" description="The FOURCC code for the YUYV video format.">YUYV</string>
+  <string name="video_fourcc_format_UYVY" description="The FOURCC code for the UYVY video format.">UYVY</string>
+  <string name="video_fourcc_format_MJPG" description="The FOURCC code for the MJPG video format.">MJPG</string>
+  <string name="video_fourcc_format_H264" description="The FOURCC code for the YUYV video format.">H264</string>
+  <string name="video_fourcc_format_NV12" description="The FOURCC code for the NV12 video format.">NV12</string>
+  <string name="video_format_unknown" description="Unknown video format.">Unknown</string>
+
+  <string name="audio_streaming_short_summary_line" description="Short summary of audio streaming stats with {audio_format} {num_audio_channels} channels and {sampling_frequency}. Example: PMC16 2Ch. 48000"><xliff:g id="audio_format">%1$s</xliff:g> <xliff:g id="num_audio_channels">%2$d</xliff:g>Ch. <xliff:g id="sampling_frequency">%3$d</xliff:g></string>
+  <string name="video_streaming_short_summary_line" description="Short summary of video streaming stats with {fourcc_format} {width} {height} and {fps}. Example: YUYV 1980x1080 @60fps"><xliff:g id="fourcc_format">%1$s</xliff:g> <xliff:g id="width">%2$d</xliff:g>x<xliff:g id="height">%3$d</xliff:g> @<xliff:g id="fps">%4$d</xliff:g>fps</string>
+  <string name="camera_icon_content_description" description="Accessibility label for the camera icon in the permissions checklist">Camera permission icon</string>
+  <string name="camera_permissions_status_content_description" description="Accessibility label for the camera permissions status icon">Camera permission status</string>
+  <string name="usb_device_permission_status_content_description" description="Accessibility label for the USB device permission status icon">USB device permission status</string>
+  <string name="record_audio_icon_content_description" description="Accessibility label for the record audio icon in the permissions checklist">Record audio permission icon</string>
+  <string name="record_audio_permissions_status_content_description" description="Accessibility label for the record audio permissions status icon">Record audio permission status</string>
+  <string name="usb_icon_content_description" description="Accessibility label for the USB icon in the permissions checklist">USB device permission icon</string>
+  <string name="capture_card_image_content_description" description="Accessibility label for the capture card image">USB capture card image</string>
 </resources>

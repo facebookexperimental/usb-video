@@ -23,9 +23,8 @@ private const val MIN_SCALE = 0.85f
 private const val MIN_ALPHA = 0.5f
 
 /**
- * View pager animation to transition between status and streamer screens.
- * Adapted from android developer guide at
- * https://developer.android.com/develop/ui/views/animations/screen-slide-2
+ * View pager animation to transition between status and streamer screens. Adapted from android
+ * developer guide at https://developer.android.com/develop/ui/views/animations/screen-slide-2
  */
 class ZoomOutPageTransformer : ViewPager2.PageTransformer {
 

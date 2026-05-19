@@ -47,26 +47,31 @@
 #define ULOGW(...) __android_log_print(ANDROID_LOG_WARN, "UsbVideoStreamer", __VA_ARGS__)
 
 #define ULOGE(...) __android_log_print(ANDROID_LOG_ERROR, "UsbVideoStreamer", __VA_ARGS__)
-
-UsbVideoStreamer::UsbVideoStreamer(
-    intptr_t deviceFD,
-    int32_t width,
-    int32_t height,
-    int32_t fps,
-    uvc_frame_format uvcFrameFormat)
-    : deviceFD_(deviceFD),
-      width_(width),
-      height_(height),
-      fps_(fps),
-      uvcFrameFormat_(uvcFrameFormat) {
+/*
+ +  INITIAL,
++  INITIALIZED,
++  CONFIGURED,
++  STARTED,
++  STOPPED,
++  DESTROYING,
++  DESTROYED,
++  INIT_FAILED,
++  CONFIGURE_FAILED,
++  START_FAILED,
++  STOP_FAILED,
+ */
+UsbVideoStreamer::UsbVideoStreamer(intptr_t deviceFD) : deviceFD_(deviceFD) {
   if (libusb_set_option(nullptr, LIBUSB_OPTION_WEAK_AUTHORITY) != LIBUSB_SUCCESS) {
     ULOGE("libusb setting no discovery option failed");
+    state_ = VideoStreamerState::INIT_FAILED;
+    return;
   }
 
   // Initialize a UVC service context. Libuvc will set up its own libusb context.
   uvc_error_t res = uvc_init(&uvcContext_, nullptr);
   if (res != UVC_SUCCESS) {
     ULOGE("uvc_init failed %s", uvc_strerror(res));
+    state_ = VideoStreamerState::INIT_FAILED;
     return;
   }
   ULOGE("UVC initialized");
@@ -74,65 +79,122 @@ UsbVideoStreamer::UsbVideoStreamer(
   if ((uvc_wrap(deviceFD, uvcContext_, &deviceHandle_) != UVC_SUCCESS) ||
       (deviceHandle_ == nullptr)) {
     ULOGE("uvc_wrap error");
+    state_ = VideoStreamerState::INIT_FAILED;
     return;
   }
+  state_ = VideoStreamerState::INITIALIZED;
+}
 
-  res = uvc_get_stream_ctrl_format_size(
+void UsbVideoStreamer::printFrameFormats() const {
+  const uvc_format_desc_t* format_desc = uvc_get_format_descs(deviceHandle_);
+  ULOGI("------------ streaming formats and frame descriptors ------------");
+  while (format_desc != nullptr) {
+    auto fourccFormat = std::string((char*)format_desc->fourccFormat);
+    ULOGI(
+        "format desc bDescriptorSubtype: %d, fourccFormat: (%4s) frames count: %d",
+        format_desc->bDescriptorSubtype,
+        format_desc->fourccFormat,
+        format_desc->bNumFrameDescriptors);
+    const uvc_frame_desc_t* frame_desc = format_desc->frame_descs;
+    while (frame_desc != nullptr) {
+      const int32_t frame_width = frame_desc->wWidth;
+      const int32_t frame_height = frame_desc->wHeight;
+      const int32_t frame_fps = 10000000 / frame_desc->dwDefaultFrameInterval;
+      ULOGI(
+          "   frame desc: (%4s) %dx%d %dfps",
+          format_desc->fourccFormat,
+          frame_width,
+          frame_height,
+          frame_fps);
+      frame_desc = frame_desc->next;
+    }
+    format_desc = format_desc->next;
+  }
+  ULOGI("------------ streaming formats and frame descriptors ------------");
+}
+
+VideoStreamerState UsbVideoStreamer::configure(
+    int32_t width,
+    int32_t height,
+    int32_t fps,
+    uvc_frame_format uvcFrameFormat) {
+  if (state_ == VideoStreamerState::INIT_FAILED) {
+    return state_;
+  }
+
+  printFrameFormats();
+
+  auto res = uvc_get_stream_ctrl_format_size(
       deviceHandle_,
       &streamCtrl_, /* result stored in ctrl */
-      uvcFrameFormat_,
+      uvcFrameFormat,
       width,
       height,
       fps);
-  if (res == UVC_SUCCESS) {
-    captureFrameWidth_ = width;
-    captureFrameHeight_ = height;
-    captureFrameFps_ = fps;
-    captureFrameFormat_ = uvcFrameFormat_;
-    isStreamControlNegotiated_ = true;
-    ULOGI(
-        "uvc_get_stream_ctrl_format_size found for %dx%d@%dfps format: %d",
-        width,
-        height,
-        fps,
-        uvcFrameFormat_);
-  } else {
-    isStreamControlNegotiated_ = false;
+  if (res != UVC_SUCCESS) {
     ULOGE(
-        "uvc_get_stream_ctrl_format_size for %d %dx%d@%dfps failed %s",
-        uvcFrameFormat_,
+        "uvc_get_stream_ctrl_format_size for format: %d %dx%d@%dfps failed %s",
+        uvcFrameFormat,
         width,
         height,
         fps,
         uvc_strerror(res));
+    state_ = VideoStreamerState::CONFIGURE_FAILED;
+    return state_;
   }
+  ULOGI(
+      "uvc_get_stream_ctrl_format_size found for format: %d %dx%d@%dfps ",
+      uvcFrameFormat,
+      width,
+      height,
+      fps);
+  captureFrameWidth_ = width;
+  captureFrameHeight_ = height;
+  captureFrameFps_ = fps;
+  captureFrameFormat_ = uvcFrameFormat;
+
+  uvc_error_t ret = uvc_stream_open_ctrl(deviceHandle_, &streamHandle_, &streamCtrl_);
+  if (ret != UVC_SUCCESS) {
+    state_ = VideoStreamerState::CONFIGURE_FAILED;
+    return state_;
+  }
+  state_ = VideoStreamerState::CONFIGURED;
+  return state_;
 }
 
-bool UsbVideoStreamer::configureOutput(ANativeWindow* previewWindow) {
-  if (!isStreamControlNegotiated_) {
+bool UsbVideoStreamer::start(ANativeWindow* previewWindow) {
+  if (state_ == VideoStreamerState::CONFIGURE_FAILED || streamHandle_ == nullptr) {
     return false;
   }
   if (previewWindow_ == nullptr) {
     previewWindow_ = previewWindow;
   }
-  uvc_error_t ret = uvc_stream_open_ctrl(deviceHandle_, &streamHandle_, &streamCtrl_);
-  return ret == UVC_SUCCESS;
-}
-
-bool UsbVideoStreamer::start() {
-  if (streamHandle_ == nullptr) {
+  uvc_error_t ret = uvc_stream_start(streamHandle_, captureFrameCallback, this, 0);
+  if (ret != UVC_SUCCESS) {
+    ULOGE("uvc_stream_start error %d %s", ret, uvc_strerror(ret));
+    state_ = VideoStreamerState::START_FAILED;
     return false;
   }
-  uvc_error_t ret = uvc_stream_start(streamHandle_, captureFrameCallback, this, 0);
-  ULOGE("uvc_stream_start %d", ret);
-  return ret == UVC_SUCCESS;
+  ULOGD("uvc_stream_start success.");
+  state_ = VideoStreamerState::STARTED;
+  return true;
 }
 
 bool UsbVideoStreamer::stop() {
   if (streamHandle_ == nullptr) {
+    state_ = VideoStreamerState::STOP_FAILED;
     return false;
   }
-  return uvc_stream_stop(streamHandle_) == UVC_SUCCESS;
+  uvc_error_t ret = uvc_stream_stop(streamHandle_);
+  if (ret != UVC_SUCCESS) {
+    ULOGE("uvc_stream_stop error %d %s", ret, uvc_strerror(ret));
+    state_ = VideoStreamerState::STOP_FAILED;
+    return false;
+  }
+  streamHandle_ = nullptr;
+  ULOGD("uvc_stream_stop success.");
+  state_ = VideoStreamerState::STOPPED;
+  return true;
 }
 
 static std::string fourccFormatFromUvcFrameFormat(uvc_frame_format frameFormat) {
@@ -153,17 +215,34 @@ static std::string fourccFormatFromUvcFrameFormat(uvc_frame_format frameFormat) 
   return "";
 }
 
+static bool isEmptyMjpegFrame(uvc_frame_t* frame) {
+  // JPEG frame start of image (SOI) is 0xff 0xd8 and end of image (EOI) is 0xff 0xd9.
+  // empty frame is described by SOI followed by EOI
+  static std::array<uint8_t, 4> emptyFrame{0xff, 0xd8, 0xff, 0xd9};
+  return frame->data != nullptr && frame->data_bytes == emptyFrame.size() &&
+      (std::memcmp(emptyFrame.data(), frame->data, emptyFrame.size()) == 0);
+}
+
 static bool isValidMjpegFrame(uvc_frame_t* frame) {
   // See https://en.wikipedia.org/wiki/JPEG_File_Interchange_Format
-  if (frame->data_bytes < 6 || frame->data == nullptr) {
+  if (frame->data_bytes < 4 || frame->data == nullptr) {
     ULOGE("Invalid MJPEG frame size %zu ptr %p", frame->data_bytes, frame->data);
     return false;
   }
+
   u_int8_t soi1 = *(u_int8_t*)frame->data;
   u_int8_t soi2 = *((u_int8_t*)frame->data + 1);
-  // JPEG frame start of image (SOI) is 0xff 0xd8.
-  if (soi1 != 0xff || soi2 != 0xd8) {
-    ULOGE("Invalid MJPEG frame SOI. size: %zu SOI: %x%x", frame->data_bytes, soi1, soi2);
+  u_int8_t eoi1 = *((u_int8_t*)frame->data + frame->data_bytes - 2);
+  u_int8_t eoi2 = *((u_int8_t*)frame->data + frame->data_bytes - 1);
+  // JPEG frame start of image (SOI) is 0xff 0xd8 and EOI is 0xff 0xd9
+  if (soi1 != 0xff || soi2 != 0xd8 || eoi1 != 0xff || eoi2 != 0xd9) {
+    ULOGE(
+        "Invalid MJPEG frame SOI or EOI. size: %zu SOI: %x%x EOI: %x%x",
+        frame->data_bytes,
+        soi1,
+        soi2,
+        eoi1,
+        eoi2);
     return false;
   }
   return true;
@@ -177,6 +256,14 @@ std::string UsbVideoStreamer::statsSummaryString() const {
       captureFrameHeight_,
       stats_.fps);
   ;
+}
+
+VideoStatsSummary UsbVideoStreamer::statsSummary() const {
+  return VideoStatsSummary{
+      .captureFrameFormat = captureFrameFormat_,
+      .captureFrameWidth = captureFrameWidth_,
+      .captureFrameHeight = captureFrameHeight_,
+      .fps = stats_.fps};
 }
 
 UsbVideoStreamer::~UsbVideoStreamer() {
@@ -226,7 +313,7 @@ void UsbVideoStreamer::captureFrameCallback(uvc_frame_t* frame, void* user_data)
       }
       break;
     case UVC_FRAME_FORMAT_MJPEG:
-      if (!isValidMjpegFrame(frame)) {
+      if (isEmptyMjpegFrame(frame) || !isValidMjpegFrame(frame)) {
         return;
       }
       break;
@@ -239,7 +326,9 @@ void UsbVideoStreamer::captureFrameCallback(uvc_frame_t* frame, void* user_data)
   UsbVideoStreamerStats& stats = self->stats_;
   bool first_call = stats.lastFpsUpdate.time_since_epoch().count() == 0;
   if (first_call) {
-    prctl(PR_SET_NAME, "usb_video_capture");
+    if (prctl(PR_SET_NAME, "usb_video_capture") == -1) {
+      ULOGI("fail to set usb_video_capture thread name");
+    }
     ULOGI("__ANDROID_MIN_SDK_VERSION__ %d", __ANDROID_MIN_SDK_VERSION__);
     ULOGI(
         "Capture frame format: %d data bytes: %zu step: %zd %dx%d",
@@ -261,7 +350,7 @@ void UsbVideoStreamer::captureFrameCallback(uvc_frame_t* frame, void* user_data)
   }
 
   if (first_call) {
-    ULOGE(
+    ULOGI(
         "Display buffer format: %d  stride: %d %dx%d",
         buffer.format,
         buffer.stride,

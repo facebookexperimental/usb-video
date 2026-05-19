@@ -100,4 +100,4 @@ class RingBuffer {
   std::unique_ptr<T[]> buffer_;
 };
 
-typedef RingBuffer<uint16_t> RingBufferPcm;
+using RingBufferPcm = RingBuffer<uint16_t>;

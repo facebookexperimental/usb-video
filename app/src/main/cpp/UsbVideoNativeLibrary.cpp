@@ -25,6 +25,8 @@
 #include "clog.h"
 
 static JavaVM* javaVM_ = nullptr;
+static jmethodID updateAudioStatsMethodID = nullptr;
+static jmethodID updateVideotatsMethodID = nullptr;
 
 static std::unique_ptr<UsbAudioStreamer> streamer_{};
 static std::unique_ptr<UsbVideoStreamer> uvcStreamer_{};
@@ -40,6 +42,14 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* jvm, void* reserved) {
   if (JNI_OK != jvm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_4)) {
     CLOGE("Get JNIEnv failed");
     return JNI_ERR;
+  }
+  jclass audioStatsSummaryClass = env->FindClass("com/meta/usbvideo/AudioStatsSummary");
+  if (audioStatsSummaryClass != nullptr) {
+    updateAudioStatsMethodID = env->GetMethodID(audioStatsSummaryClass, "update", "(III)V");
+  }
+  jclass videoStatsSummaryClass = env->FindClass("com/meta/usbvideo/VideoStatsSummary");
+  if (videoStatsSummaryClass != nullptr) {
+    updateVideotatsMethodID = env->GetMethodID(videoStatsSummaryClass, "update", "(IIII)V");
   }
   CLOGI("JNI_OnLoad success!");
   return JNI_VERSION_1_4;
@@ -61,35 +71,36 @@ Java_com_meta_usbvideo_UsbVideoNativeLibrary_getUsbDeviceSpeed(JNIEnv* env, jobj
   return 0; /* LIBUSB_SPEED_UNKNOWN */
 }
 
-JNIEXPORT jboolean JNICALL
-Java_com_meta_usbvideo_UsbVideoNativeLibrary_connectUsbVideoStreamingNative(
+JNIEXPORT jint JNICALL Java_com_meta_usbvideo_UsbVideoNativeLibrary_connectUsbVideoStreamingNative(
     JNIEnv* env,
-    jobject tis,
+    jobject /*self*/,
     jint deviceFd,
     jint width,
     jint height,
     jint fps,
-    jint libuvcFrameFormat,
-    jobject jSurface) {
-  CLOGE(
-      " Java_com_meta_usbvideo_UsbVideoNativeLibrary__connectUsbVideoStreamingNative called with deviceFd %d",
-      deviceFd);
+    jint libuvcFrameFormat) {
   if (uvcStreamer_ == nullptr) {
-    uvcStreamer_ = std::make_unique<UsbVideoStreamer>(
-        (intptr_t)deviceFd, width, height, fps, static_cast<uvc_frame_format>(libuvcFrameFormat));
-    previewWindow_.reset(ANativeWindow_fromSurface(env, jSurface));
-    return uvcStreamer_->configureOutput(previewWindow_.get());
+    uvcStreamer_ = std::make_unique<UsbVideoStreamer>((intptr_t)deviceFd);
+  } else if (uvcStreamer_->getDeviceFD() != deviceFd) {
+    CLOGW("Unexpected uvcStreamer_ state!");
+    uvcStreamer_->stop();
+    uvcStreamer_ = nullptr;
+    previewWindow_.reset(nullptr);
+    uvcStreamer_ = std::make_unique<UsbVideoStreamer>((intptr_t)deviceFd);
   }
-  return false;
+  auto state =
+      uvcStreamer_->configure(width, height, fps, static_cast<uvc_frame_format>(libuvcFrameFormat));
+  return static_cast<jint>(state);
 }
-
 
 JNIEXPORT jboolean JNICALL
 Java_com_meta_usbvideo_UsbVideoNativeLibrary_startUsbVideoStreamingNative(
-        JNIEnv* env,
-        jobject self) {
+    JNIEnv* env,
+    jobject /*self*/,
+    jobject jSurface) {
   if (uvcStreamer_ != nullptr) {
-    return uvcStreamer_->start();
+    previewWindow_.reset(ANativeWindow_fromSurface(env, jSurface));
+    return uvcStreamer_->start(previewWindow_.get());
   }
   return false;
 }
@@ -102,9 +113,10 @@ JNIEXPORT void JNICALL Java_com_meta_usbvideo_UsbVideoNativeLibrary_stopUsbVideo
   }
 }
 
-JNIEXPORT void JNICALL Java_com_meta_usbvideo_UsbVideoNativeLibrary_disconnectUsbVideoStreamingNative(
-        JNIEnv* env,
-        jobject self) {
+JNIEXPORT void JNICALL
+Java_com_meta_usbvideo_UsbVideoNativeLibrary_disconnectUsbVideoStreamingNative(
+    JNIEnv* env,
+    jobject self) {
   uvcStreamer_ = nullptr;
   previewWindow_.reset(nullptr);
 }
@@ -112,7 +124,7 @@ JNIEXPORT void JNICALL Java_com_meta_usbvideo_UsbVideoNativeLibrary_disconnectUs
 JNIEXPORT jstring JNICALL Java_com_meta_usbvideo_UsbVideoNativeLibrary_streamingStatsSummaryString(
     JNIEnv* env,
     jobject self) {
-  std::string result = "";
+  std::string result;
   if (streamer_ != nullptr) {
     result += streamer_->statsSummaryString();
     result += "\n";
@@ -121,6 +133,41 @@ JNIEXPORT jstring JNICALL Java_com_meta_usbvideo_UsbVideoNativeLibrary_streaming
     result += uvcStreamer_->statsSummaryString();
   }
   return env->NewStringUTF(result.c_str());
+}
+
+JNIEXPORT void JNICALL Java_com_meta_usbvideo_UsbVideoNativeLibrary_updateStreamingStatsSummary(
+    JNIEnv* env,
+    jobject /*self*/,
+    jobject audioStatsSummary,
+    jobject videoStatsSummary) {
+  if (audioStatsSummary != nullptr && updateAudioStatsMethodID != nullptr) {
+    if (streamer_ != nullptr) {
+      auto stats = streamer_->statsSummary();
+      env->CallVoidMethod(
+          audioStatsSummary,
+          updateAudioStatsMethodID,
+          stats.jAudioFormat,
+          stats.channelCount,
+          stats.samplingFrequency);
+    } else {
+      env->CallVoidMethod(audioStatsSummary, updateAudioStatsMethodID, -1, -1, -1);
+    }
+  }
+
+  if (videoStatsSummary != nullptr && updateVideotatsMethodID != nullptr) {
+    if (uvcStreamer_ != nullptr) {
+      auto stats = uvcStreamer_->statsSummary();
+      env->CallVoidMethod(
+          videoStatsSummary,
+          updateVideotatsMethodID,
+          stats.captureFrameFormat,
+          stats.captureFrameWidth,
+          stats.captureFrameHeight,
+          stats.fps);
+    } else {
+      env->CallVoidMethod(videoStatsSummary, updateVideotatsMethodID, -1, -1, -1, -1);
+    }
+  }
 }
 
 JNIEXPORT jboolean JNICALL
@@ -135,7 +182,6 @@ Java_com_meta_usbvideo_UsbVideoNativeLibrary_connectUsbAudioStreamingNative(
     jint jAudioPerfMode,
     jint outputFramesPerBuffer) {
   if (streamer_ != nullptr) {
-    //CLOGE("startUsbAudioStreamingNative called before stopUsbAudioStreamingNative was called");
     return true;
   }
   streamer_ = std::make_unique<UsbAudioStreamer>(
@@ -149,17 +195,17 @@ Java_com_meta_usbvideo_UsbVideoNativeLibrary_connectUsbAudioStreamingNative(
   return streamer_ != nullptr;
 }
 
-
-JNIEXPORT void JNICALL Java_com_meta_usbvideo_UsbVideoNativeLibrary_disconnectUsbAudioStreamingNative(
-        JNIEnv* env,
-        jobject self) {
+JNIEXPORT void JNICALL
+Java_com_meta_usbvideo_UsbVideoNativeLibrary_disconnectUsbAudioStreamingNative(
+    JNIEnv* env,
+    jobject self) {
   if (streamer_ != nullptr) {
     streamer_ = nullptr;
   }
 }
 JNIEXPORT void JNICALL Java_com_meta_usbvideo_UsbVideoNativeLibrary_startUsbAudioStreamingNative(
-        JNIEnv* env,
-        jobject self) {
+    JNIEnv* env,
+    jobject self) {
   if (streamer_ != nullptr) {
     streamer_->start();
   }

@@ -91,42 +91,42 @@ bool UsbAudioStreamer::resolveAudioInterface() {
 
   // Find the audio interface
   for (auto i = 0; i < config_->bNumInterfaces; ++i) {
-    const auto interface = &config_->interface[i];
+    const auto* const interface = &config_->interface[i];
     for (auto j = 0; j < interface->num_altsetting; ++j) {
-      const auto interfaceDescriptor = &interface->altsetting[j];
+      const auto* const interfaceDescriptor = &interface->altsetting[j];
       ULOGI(
-              "interfaceDescriptor input endpoint at %d %u %u.",
-              j,
-              interfaceDescriptor->bInterfaceClass,
-              interfaceDescriptor->bInterfaceSubClass);
+          "interfaceDescriptor input endpoint at %d %u %u.",
+          j,
+          interfaceDescriptor->bInterfaceClass,
+          interfaceDescriptor->bInterfaceSubClass);
       if (interfaceDescriptor->bInterfaceClass == LIBUSB_CLASS_AUDIO &&
           interfaceDescriptor->bInterfaceSubClass == kInterfaceSubClassStreaming &&
           interfaceDescriptor->bNumEndpoints > 0) {
         for (auto k = 0; k < interfaceDescriptor->bNumEndpoints; k++) {
           ULOGI(
-                  "found a streaming sub class interface %u at %u wtih endpoints count %d",
-                  interfaceDescriptor->bInterfaceNumber,
-                  i,
-                  interfaceDescriptor->bNumEndpoints);
-          auto const endpoint = &interfaceDescriptor->endpoint[k];
+              "found a streaming sub class interface %u at %u wtih endpoints count %d",
+              interfaceDescriptor->bInterfaceNumber,
+              i,
+              interfaceDescriptor->bNumEndpoints);
+          const auto* const endpoint = &interfaceDescriptor->endpoint[k];
           if ((endpoint->bEndpointAddress & LIBUSB_ENDPOINT_IN) != 0) {
             auto interface_number = interfaceDescriptor->bInterfaceNumber;
             endpointAddress_ = endpoint->bEndpointAddress;
             maxPacketSize_ = endpoint->wMaxPacketSize;
             ULOGI(
-                    "Found input endpoint at %u packet size %d. maxPacketSize_: %d",
-                    endpoint->bEndpointAddress,
-                    endpoint->wMaxPacketSize,
-                    maxPacketSize_);
+                "Found input endpoint at %u packet size %d. maxPacketSize_: %d",
+                endpoint->bEndpointAddress,
+                endpoint->wMaxPacketSize,
+                maxPacketSize_);
             // if a kernel driver is active, must detach before claiming interfaces
             if (libusb_kernel_driver_active(deviceHandle_, interface_number) == 1) {
               auto detach_call_status =
-                      libusb_detach_kernel_driver(deviceHandle_, interfaceDescriptor->bInterfaceNumber);
+                  libusb_detach_kernel_driver(deviceHandle_, interfaceDescriptor->bInterfaceNumber);
               if (detach_call_status != LIBUSB_SUCCESS) {
                 ULOGE(
-                        "libusb_detach_kernel_driver error for interface %d: %s.",
-                        interface_number,
-                        libusb_error_name(detach_call_status));
+                    "libusb_detach_kernel_driver error for interface %d: %s.",
+                    interface_number,
+                    libusb_error_name(detach_call_status));
                 return false;
               }
               detachedInterface_ = interface_number;
@@ -134,21 +134,21 @@ bool UsbAudioStreamer::resolveAudioInterface() {
             auto claim_interface_status = libusb_claim_interface(deviceHandle_, interface_number);
             if (claim_interface_status != LIBUSB_SUCCESS) {
               ULOGE(
-                      "libusb_claim_interface error for interface %d: %s.",
-                      interface_number,
-                      libusb_error_name(claim_interface_status));
+                  "libusb_claim_interface error for interface %d: %s.",
+                  interface_number,
+                  libusb_error_name(claim_interface_status));
               return false;
             }
             claimedInterface_ = i;
             auto set_alt_setting_status = libusb_set_interface_alt_setting(
-                    deviceHandle_,
-                    interfaceDescriptor->bInterfaceNumber,
-                    interfaceDescriptor->bAlternateSetting);
+                deviceHandle_,
+                interfaceDescriptor->bInterfaceNumber,
+                interfaceDescriptor->bAlternateSetting);
             if (set_alt_setting_status != LIBUSB_SUCCESS) {
               ULOGE(
-                      "libusb_set_interface_alt_setting error for interface %d: %s.",
-                      interface_number,
-                      libusb_error_name(claim_interface_status));
+                  "libusb_set_interface_alt_setting error for interface %d: %s.",
+                  interface_number,
+                  libusb_error_name(claim_interface_status));
               return false;
             } else {
               ULOGI("libusb_claim_interface claimed interface %d success", interface_number);
@@ -163,24 +163,24 @@ bool UsbAudioStreamer::resolveAudioInterface() {
 }
 
 UsbAudioStreamer::UsbAudioStreamer(
-        intptr_t deviceFD,
-        uint32_t jAudioFormat,
-        uint32_t samplingFrequency,
-        uint8_t subFrameSize,
-        uint8_t channelCount,
-        uint32_t jAudioPerfMode,
-        uint32_t framesPerBurst)
-        : jAudioFormat_(jAudioFormat),
-          samplingFrequency_(samplingFrequency),
-          subFrameSize_(subFrameSize),
-          channelCount_(channelCount),
-          framesPerBurst_(framesPerBurst) {
+    intptr_t deviceFD,
+    uint32_t jAudioFormat,
+    uint32_t samplingFrequency,
+    uint8_t subFrameSize,
+    uint8_t channelCount,
+    uint32_t jAudioPerfMode,
+    uint32_t framesPerBurst)
+    : jAudioFormat_(jAudioFormat),
+      samplingFrequency_(samplingFrequency),
+      subFrameSize_(subFrameSize),
+      channelCount_(channelCount),
+      framesPerBurst_(framesPerBurst) {
   ULOGI(
-          "UsbAudioStreamer::init samplingFrequency_: %d channelCount_: %d framesPerBurst_ %d",
-          samplingFrequency_,
-          channelCount_,
-          framesPerBurst_);
-  int errcode = libusb_set_option(nullptr, LIBUSB_OPTION_NO_DEVICE_DISCOVERY);
+      "UsbAudioStreamer::init samplingFrequency_: %d channelCount_: %d framesPerBurst_ %d",
+      samplingFrequency_,
+      channelCount_,
+      framesPerBurst_);
+  int errcode = libusb_set_option(nullptr, LIBUSB_OPTION_WEAK_AUTHORITY);
   if (errcode != LIBUSB_SUCCESS) {
     ULOGE("libusb setting no discovery option failed %s", libusb_error_name(errcode));
   }
@@ -227,10 +227,10 @@ UsbAudioStreamer::UsbAudioStreamer(
     framesPerBurst_ = AAudioStream_getFramesPerBurst(audioStream_);
     bufferCapacityInFrames_ = AAudioStream_getBufferCapacityInFrames(audioStream_);
     ULOGD(
-            "AAudioStream params: framesPerBurst %d bufferSizeInFrames %d bufferCapacityInFrames = %d",
-            AAudioStream_getFramesPerBurst(audioStream_),
-            AAudioStream_getBufferSizeInFrames(audioStream_),
-            AAudioStream_getBufferCapacityInFrames(audioStream_));
+        "AAudioStream params: framesPerBurst %d bufferSizeInFrames %d bufferCapacityInFrames = %d",
+        AAudioStream_getFramesPerBurst(audioStream_),
+        AAudioStream_getBufferSizeInFrames(audioStream_),
+        AAudioStream_getBufferCapacityInFrames(audioStream_));
   } else {
     state_ = StreamerState::ERROR;
     return;
@@ -262,7 +262,7 @@ bool UsbAudioStreamer::start() {
   streamerStats_.event_loops = 0;
   stopUsbAudioCapture_ = 0;
 
-  if(!submitTransferRequests()) {
+  if (!submitTransferRequests()) {
     ULOGE("Submit transfer requests failed");
     return false;
   }
@@ -277,10 +277,10 @@ bool UsbAudioStreamer::start() {
   int64_t timeoutNanos = 500LL * 1000000LL;
   auto result = AAudioStream_waitForStateChange(audioStream_, inputState, &nextState, timeoutNanos);
   ULOGD(
-          "AAudioStream start: result %d nextState %d started(ref) = %d",
-          result,
-          nextState,
-          AAUDIO_STREAM_STATE_STARTED);
+      "AAudioStream start: result %d nextState %d started(ref) = %d",
+      result,
+      nextState,
+      AAUDIO_STREAM_STATE_STARTED);
   if (result != AAUDIO_OK) {
     state_ = StreamerState::ERROR;
     ULOGE("start audio player error");
@@ -297,9 +297,8 @@ bool UsbAudioStreamer::ensureTransferRequests() {
   return this->submitTransferRequests();
 }
 
-
 bool UsbAudioStreamer::submitTransferRequests() {
-  for (const auto& transferData: transfers_) {
+  for (const auto& transferData : transfers_) {
     auto submit_transfer_status = libusb_submit_transfer(transferData->transfer);
     transferData->isSubmitted = submit_transfer_status == LIBUSB_SUCCESS;
   }
@@ -323,10 +322,10 @@ void UsbAudioStreamer::allocateTransferRequests() {
   framesPerBurst_ = AAudioStream_getFramesPerBurst(audioStream_);
   bufferCapacityInFrames_ = AAudioStream_getBufferCapacityInFrames(audioStream_);
   ULOGD(
-          "AAudioStream params: framesPerBurst %d bufferSizeInFrames %d bufferCapacityInFrames = %d",
-          framesPerBurst_,
-          AAudioStream_getBufferSizeInFrames(audioStream_),
-          bufferCapacityInFrames_);
+      "AAudioStream params: framesPerBurst %d bufferSizeInFrames %d bufferCapacityInFrames = %d",
+      framesPerBurst_,
+      AAudioStream_getBufferSizeInFrames(audioStream_),
+      bufferCapacityInFrames_);
   auto bytes_per_burst = framesPerBurst_ * subFrameSize_ * channelCount_;
   auto computed_num_packets = (bytes_per_burst + maxPacketSize_ - 1) / maxPacketSize_;
   auto num_packets = std::max(2, computed_num_packets);
@@ -335,16 +334,16 @@ void UsbAudioStreamer::allocateTransferRequests() {
   int32_t num_transfers = std::max(2, computed_num_transfers);
   size_t ring_buffer_capacity = buffer_size * num_transfers / subFrameSize_;
   ULOGI(
-          "ISO transfer params. maxPacketSize: %d num packets: %d buffer size: %d num transfers: %d",
-          maxPacketSize_,
-          num_packets,
-          buffer_size,
-          num_transfers);
+      "ISO transfer params. maxPacketSize: %d num packets: %d buffer size: %d num transfers: %d",
+      maxPacketSize_,
+      num_packets,
+      buffer_size,
+      num_transfers);
   ULOGI(
-          "Audio out params. framesPerBurst: %d bufferCapacityInFrames: %d, ring buffer capacity: %zu",
-          framesPerBurst_,
-          bufferCapacityInFrames_,
-          ring_buffer_capacity);
+      "Audio out params. framesPerBurst: %d bufferCapacityInFrames: %d, ring buffer capacity: %zu",
+      framesPerBurst_,
+      bufferCapacityInFrames_,
+      ring_buffer_capacity);
 
   if (ringBuffer_->capacity() != ring_buffer_capacity) {
     ringBuffer_ = std::make_unique<RingBufferPcm>(ring_buffer_capacity);
@@ -357,22 +356,22 @@ void UsbAudioStreamer::allocateTransferRequests() {
       continue;
     }
     ULOGD(
-            "libusb_transfer initial status is %d. %p maxPacketSize_: %d",
-            transfer->status,
-            this,
-            maxPacketSize_);
+        "libusb_transfer initial status is %d. %p maxPacketSize_: %d",
+        transfer->status,
+        this,
+        maxPacketSize_);
     transfers_.emplace_back(std::make_unique<TransferUserData>(transfer, this, false));
     TransferUserData* transferUserData = transfers_.back().get();
     libusb_fill_iso_transfer(
-            transfer,
-            deviceHandle_,
-            (unsigned char)endpointAddress_,
-            (unsigned char*)malloc(buffer_size),
-            buffer_size,
-            num_packets,
-            transferCallback,
-            transferUserData,
-            kIsochronousTransferTimeoutMillis);
+        transfer,
+        deviceHandle_,
+        (unsigned char)endpointAddress_,
+        (unsigned char*)malloc(buffer_size),
+        buffer_size,
+        num_packets,
+        transferCallback,
+        transferUserData,
+        kIsochronousTransferTimeoutMillis);
     transfer->flags = LIBUSB_TRANSFER_SHORT_NOT_OK | LIBUSB_TRANSFER_FREE_BUFFER;
     libusb_set_iso_packet_lengths(transfer, maxPacketSize_);
   }
@@ -402,7 +401,7 @@ uint32_t UsbAudioStreamer::samplesFromByteCount(uint32_t byteCount) const {
 }
 
 std::string UsbAudioStreamer::statsSummaryString() const {
-  std::string audioFormatStr = "";
+  std::string audioFormatStr;
   if (jAudioFormat_ == 2) { // AudioFormat.ENCODING_PCM_16BIT
     audioFormatStr = "PCM16";
   } else if (jAudioFormat_ == 3) {
@@ -411,24 +410,31 @@ std::string UsbAudioStreamer::statsSummaryString() const {
     audioFormatStr = "PCM Float";
   }
   return std::format(
-          "{} {}Ch. {}", audioFormatStr, channelCount_, streamerStats_.samplingFrequency);
+      "{} {}Ch. {}", audioFormatStr, channelCount_, streamerStats_.samplingFrequency);
   ;
 }
 
+AudioStatsSummary UsbAudioStreamer::statsSummary() const {
+  return AudioStatsSummary{
+      .jAudioFormat = jAudioFormat_,
+      .channelCount = channelCount_,
+      .samplingFrequency = streamerStats_.samplingFrequency};
+}
+
 aaudio_data_callback_result_t UsbAudioStreamer::audioPlaybackCallback(
-        AAudioStream* stream,
-        void* userData,
-        void* audioData,
-        int32_t numFrames) {
+    AAudioStream* stream,
+    void* userData,
+    void* audioData,
+    int32_t numFrames) {
   UsbAudioStreamer* streamer = reinterpret_cast<UsbAudioStreamer*>(userData);
   auto sizeToRead = streamer->channelCount_ * numFrames;
   auto bytesToRead = streamer->bytesInAudioFrames(numFrames);
 
   streamer->streamerStats_.event_loops++;
   libusb_handle_events_timeout_completed(
-          streamer->context(),
-          &streamer->libusbEventsTimeout_,
-          const_cast<int*>(&streamer->stopUsbAudioCapture_));
+      streamer->context(),
+      &streamer->libusbEventsTimeout_,
+      const_cast<int*>(&streamer->stopUsbAudioCapture_));
   streamer->streamerStats_.player_cb_counter++;
 
   auto available = streamer->ringBuffer_->size();
@@ -439,10 +445,10 @@ aaudio_data_callback_result_t UsbAudioStreamer::audioPlaybackCallback(
     auto movedData = streamer->ringBuffer_->read((uint16_t*)audioData, sizeToRead);
     if (movedData != sizeToRead && streamer->state_ == StreamerState::STARTED) {
       ULOGD(
-              "ringBuffer read error %zu sizeToRead %d read data = %d",
-              available,
-              sizeToRead,
-              movedData);
+          "ringBuffer read error %zu sizeToRead %d read data = %d",
+          available,
+          sizeToRead,
+          movedData);
     }
   }
   return AAUDIO_CALLBACK_RESULT_CONTINUE;
@@ -460,6 +466,9 @@ bool UsbAudioStreamer::startAudioPlayer() {
 }
 
 bool UsbAudioStreamer::stopAudioPlayer() {
+  if (audioStream_ == nullptr) {
+    return true;
+  }
   if (AAudioStream_requestStop(audioStream_) != AAUDIO_OK) {
     return false;
   }
@@ -490,16 +499,16 @@ void UsbAudioStreamer::transferCallback(libusb_transfer* transfer) {
   const StreamerState state = streamer->state_;
   if (state == StreamerState::STOPPING) {
     if (streamer->hasActiveTransfers()) {
-      ULOGE("Streamer has active transfers");
+      ULOGI("Streamer has active transfers");
     } else {
-      ULOGE("Streamer has no active transfers");
+      ULOGI("Streamer has no active transfers");
       std::unique_lock lk(streamer->mutex_);
       streamer->stateChange_.notify_one();
     }
     return;
   }
   if (state == StreamerState::DESTROYING || state == StreamerState::DESTROYED) {
-    ULOGE("Streamer is shutting down");
+    ULOGI("Streamer is shutting down");
     return;
   }
 
@@ -545,13 +554,13 @@ void UsbAudioStreamer::transferCallback(libusb_transfer* transfer) {
   duration<float> diff = duration_cast<seconds>(now - stats.t0_10_s);
   if (diff >= 10.0s) {
     ULOGI(
-            "Audio callbacks %hu usb callbacks %hu in %hu event loops. Transferred  %d in %.1f secs, speed %.1f bps",
-            stats.player_cb_counter,
-            stats.usb_cb_counter,
-            stats.event_loops,
-            stats.total_bytes,
-            diff.count(),
-            stats.total_bytes / diff.count());
+        "Audio callbacks %hu usb callbacks %hu in %hu event loops. Transferred  %d in %.1f secs, speed %.1f bps",
+        stats.player_cb_counter,
+        stats.usb_cb_counter,
+        stats.event_loops,
+        stats.total_bytes,
+        diff.count(),
+        stats.total_bytes / diff.count());
     stats.t0_10_s = now;
     stats.total_bytes = 0;
     stats.player_cb_counter = 0;
@@ -564,12 +573,11 @@ void UsbAudioStreamer::transferCallback(libusb_transfer* transfer) {
   if (len > maxExpectedLen) {
     ULOGE("Error: incoming transfer data is more than maxPacketSize * num_iso_packets.");
     ULOGE(
-            "Error: incoming transfer data %d is more than maxPacketSize * num_iso_packets. %dx%d=%d",
-            len,
-            streamer->maxPacketSize_,
-            transfer->num_iso_packets,
-            maxExpectedLen);
-    ULOGE("streamer %p", streamer);
+        "Error: incoming transfer data %d is more than maxPacketSize * num_iso_packets. %dx%d=%d",
+        len,
+        streamer->maxPacketSize_,
+        transfer->num_iso_packets,
+        maxExpectedLen);
     return;
   }
 

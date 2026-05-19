@@ -19,10 +19,10 @@ import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbDeviceConnection
 import android.util.Log
 import android.util.Size
-import com.meta.usbvideo.UsbVideoNativeLibrary
 import com.meta.usbvideo.eventloop.EventLooper
 import java.io.Closeable
 import java.nio.ByteBuffer
+import kotlin.math.min
 
 private const val TAG = "VideoStreamingConnection"
 
@@ -39,6 +39,18 @@ private const val UVC_VS_FORMAT_UNCOMPRESSED: Int = 0x04
 private const val UVC_VS_FRAME_UNCOMPRESSED: Int = 0x05
 private const val UVC_VS_FORMAT_MJPEG: Int = 0x06
 private const val UVC_VS_FRAME_MJPEG: Int = 0x07
+private const val UVC_VS_FORMAT_MJPEG2TS: Int = 0x0A
+private const val UVC_VS_FORMAT_DV: Int = 0x0C
+private const val UVC_VS_FRAME_COLORFORMAT: Int = 0x0D
+private const val UVC_VS_FORMAT_FRAME_BASED: Int = 0x10
+private const val UVC_VS_FRAME_FRAME_BASED: Int = 0x11
+private const val UVC_VS_FORMAT_STREAM_BASED: Int = 0x12
+private const val UVC_VS_FORMAT_H264: Int = 0x13
+private const val UVC_VS_FRAME_H264: Int = 0x14
+private const val UVC_VS_FORMAT_H264_SIMULCAST: Int = 0x15
+private const val UVC_VS_FORMAT_VP8: Int = 0x16
+private const val UVC_VS_FRAME_VP8: Int = 0x17
+private const val UVC_VS_FORMAT_VP8_SIMULCAST: Int = 0x18
 
 private val SUPPORTED_VIDEO_FOURCC_FORMATS: Array<String> = arrayOf("YUY2", "NV12", "MJPG")
 
@@ -52,13 +64,14 @@ private fun gcd(big: Int, small: Int): Int = if (small == 0) big else gcd(small,
 class VideoStreamingConnection(
     private val usbDevice: UsbDevice,
     private val usbDeviceConnection: UsbDeviceConnection,
+    private val onClose: () -> Unit,
 ) : Closeable {
   val deviceFD: Int = usbDeviceConnection.fileDescriptor
-  lateinit var iadDescriptor: IADDescriptor
-  lateinit var interfaceDescriptor: InterfaceDescriptor
-  lateinit var endpointDescriptor: EndpointDescriptor
 
-  val videoFormats: List<VideoFormat>
+  private val videoFormats: List<VideoFormat>
+
+  fun supportedVideoFormats(): List<VideoFormat> =
+      videoFormats.filter { SUPPORTED_VIDEO_FOURCC_FORMATS.contains(it.fourccFormat) }
 
   init {
     @Suppress("CatchGeneralException")
@@ -69,56 +82,158 @@ class VideoStreamingConnection(
           Log.e(TAG, "Error in parsing USB descriptors for video streaming", e)
           emptyList<VideoFormat>()
         }
-    Log.i(TAG, "---- Supported video formats and frame sizes ----")
-    videoFormats.forEach { Log.i(TAG, it.toString()) }
+    Log.i(TAG, "---- Parsed video formats and frames ----")
+    videoFormats
+        .groupBy { it.fourccFormat }
+        .forEach { fourccFormat, formats ->
+          val isSupported = SUPPORTED_VIDEO_FOURCC_FORMATS.contains(fourccFormat)
+          Log.i(TAG, "$fourccFormat count: ${formats.size} isSupported: $isSupported")
+          formats.forEach { Log.i(TAG, "    $fourccFormat $it") }
+        }
+    Log.i(TAG, "---- Parsed video formats and frames ----")
   }
 
   private fun parseRawDescriptors(rawDescriptors: ByteArray): List<VideoFormat> {
-    Log.i(TAG, "Parsing usb descriptors of ${usbDevice.productName} for video streaming")
+    Log.i(TAG, "Parsing usb descriptors of ${usbDevice.loggingName()} for video streaming")
+    var foundVideoInterfaceCollectionIAD = false
+    // last video streaming interface descriptor
+    var videoStreamingInterfaceDescriptor: InterfaceDescriptor? = null
+
     val formatsBuilder = mutableListOf<VideoFormat>()
     var fourccFormat: String? = null
     for (descriptor in UsbDescriptorParser(rawDescriptors).descriptors()) {
-      when {
-        !::iadDescriptor.isInitialized ->
-            if (descriptor.isIADDescriptorWithVideoStreamingFunction()) {
-              Log.i(TAG, "Found IAD descriptor with video streaming function")
-              iadDescriptor = IADDescriptor(descriptor.buffer)
+      if (foundVideoInterfaceCollectionIAD && descriptor.isIADDescriptor()) {
+        Log.i(TAG, "Found a new IAD after Video Interface Collection.")
+        return formatsBuilder.toList()
+      } else if (descriptor.isIADDescriptorWithVideoStreamingFunction()) {
+        Log.i(TAG, "Found Video Interface Collection Interface Association Descriptor (IAD)")
+        foundVideoInterfaceCollectionIAD = true
+      } else if (
+          foundVideoInterfaceCollectionIAD && descriptor.isInterfaceDescriptorWithVideoStreaming()
+      ) {
+        Log.i(TAG, "Found device interface with video streaming")
+        videoStreamingInterfaceDescriptor = InterfaceDescriptor(descriptor.buffer)
+        Log.d(
+            TAG,
+            "Found Video Streaming Interface bInterfaceNumber: ${videoStreamingInterfaceDescriptor.bInterfaceNumber} bAlternateSetting: ${videoStreamingInterfaceDescriptor.bAlternateSetting} bNumEndpoints: ${videoStreamingInterfaceDescriptor.bNumEndpoints}",
+        )
+      } else if (
+          foundVideoInterfaceCollectionIAD &&
+              videoStreamingInterfaceDescriptor != null &&
+              descriptor.isClassSpecificInterfaceDescriptor()
+      ) {
+        val classSpecificSubtype = descriptor.classSpecificSubtype()
+        when (classSpecificSubtype) {
+          // Video Streaming Formats
+          UVC_VS_FORMAT_UNCOMPRESSED,
+          UVC_VS_FORMAT_MJPEG,
+          UVC_VS_FORMAT_MJPEG2TS,
+          UVC_VS_FORMAT_DV,
+          UVC_VS_FORMAT_FRAME_BASED,
+          UVC_VS_FORMAT_STREAM_BASED,
+          UVC_VS_FORMAT_H264,
+          UVC_VS_FORMAT_H264_SIMULCAST,
+          UVC_VS_FORMAT_VP8,
+          UVC_VS_FORMAT_VP8_SIMULCAST,
+          -> {
+            if (descriptor.isVSUncompressedFormatTypeDescriptor()) {
+              val uncompressedFormatDescriptor = VSUncompressedFormatDescriptor(descriptor.buffer)
+              fourccFormat = uncompressedFormatDescriptor.fourccFormat
+              Log.i(
+                  TAG,
+                  "Found fourccFormat $fourccFormat bNumFrameDescriptors: ${uncompressedFormatDescriptor.bNumFrameDescriptors}",
+              )
+            } else if (descriptor.isMJPEGVideoFormatDescriptor()) {
+              val mjpegFormatDescriptor = VSMjpegFormatDescriptor(descriptor.buffer)
+              fourccFormat = mjpegFormatDescriptor.fourccFormat
+              Log.i(
+                  TAG,
+                  "Format Descriptor fourccFormat $fourccFormat bNumFrameDescriptors: ${mjpegFormatDescriptor.bNumFrameDescriptors} bCopyProtect: ${mjpegFormatDescriptor.bCopyProtect}",
+              )
+            } else if (descriptor.isH264VideoFrameBasedFormatDescriptor()) {
+              fourccFormat = "H264"
+              val bNumFrameDescriptors = descriptor.getBIntAt(4)
+              Log.i(
+                  TAG,
+                  "Format Descriptor fourccFormat $fourccFormat bNumFrameDescriptors: $bNumFrameDescriptors",
+              )
+            } else {
+              Log.i(
+                  TAG,
+                  "Video streaming format $classSpecificSubtype (${usbVSFormatString(classSpecificSubtype)}) not supported",
+              )
+              fourccFormat = null
             }
-        !::interfaceDescriptor.isInitialized &&
-            descriptor.isInterfaceDescriptorAtLeastOneEndpoint() &&
-            descriptor.isInterfaceDescriptorWithVideoStreaming() -> {
-          Log.i(TAG, "Found device interface with video streaming and endpoint > 0")
-          interfaceDescriptor = InterfaceDescriptor(descriptor.buffer)
-        }
-        descriptor.isVSUncompressedFormatTypeDescriptor() -> {
-          val uncompressedFormatDescriptor = VSUncompressedFormatDescriptor(descriptor.buffer)
-          fourccFormat = uncompressedFormatDescriptor.fourccFormat
-        }
-        descriptor.isMJPEGVideoFormatDescriptor() -> {
-          val mjpegFormatDescriptor = VSMjpegFormatDescriptor(descriptor.buffer)
-          fourccFormat = mjpegFormatDescriptor.fourccFormat
-        }
-        descriptor.isVSFrameDescriptor() -> {
-          if (fourccFormat != null) {
-            val vsFrameDescriptor = VSFrameDescriptor(descriptor.buffer)
-            formatsBuilder.add(
-                VideoFormat(
-                    fourccFormat,
-                    vsFrameDescriptor.width(),
-                    vsFrameDescriptor.height(),
-                    vsFrameDescriptor.fps(),
-                ))
-          } else {
-            Log.e(TAG, "Found Frame Type Descriptor without a prior format descriptor")
           }
-        }
-        ::interfaceDescriptor.isInitialized && !::endpointDescriptor.isInitialized ->
-            if (descriptor.isEndpointDescriptorWithDirIN()) {
-              Log.i(TAG, "Found device interface endpoint")
-              endpointDescriptor = EndpointDescriptor(descriptor.buffer)
+          // Video streaming frames
+          UVC_VS_FRAME_UNCOMPRESSED,
+          UVC_VS_FRAME_MJPEG -> {
+            if (fourccFormat == null) {
+              Log.e(
+                  TAG,
+                  "Unexpected VS_FRAME descriptor $classSpecificSubtype ${usbVSFrameString(classSpecificSubtype)} with null fourccFormat",
+              )
+            } else {
+              val vsFrameDescriptor = VSFrameDescriptor(descriptor.buffer)
+              val defaultFps = vsFrameDescriptor.defaultFps()
+              for (fps in vsFrameDescriptor.fpsList()) {
+                val isDefaultFps = defaultFps == fps
+                Log.i(
+                    TAG,
+                    "   Frame descriptor: $fourccFormat ${vsFrameDescriptor.width()}x${vsFrameDescriptor.height()} ${vsFrameDescriptor.defaultFps()} fps isDefaultFps: $isDefaultFps",
+                )
+                formatsBuilder.add(
+                    VideoFormat(
+                        fourccFormat,
+                        vsFrameDescriptor.width(),
+                        vsFrameDescriptor.height(),
+                        fps,
+                        isDefaultFps,
+                    )
+                )
+              }
             }
-        ::iadDescriptor.isInitialized && descriptor.isIADDescriptor() -> {
-          return formatsBuilder.toList()
+          }
+          UVC_VS_FRAME_FRAME_BASED -> {
+            if (fourccFormat == "H264") {
+              val vsFrameDescriptor = VSFrameBasedFrameDescriptor(descriptor.buffer)
+              Log.i(
+                  TAG,
+                  "   Frame descriptor: $fourccFormat ${vsFrameDescriptor.width()}x${vsFrameDescriptor.height()} ${vsFrameDescriptor.fps()} fps",
+              )
+              formatsBuilder.add(
+                  VideoFormat(
+                      fourccFormat,
+                      vsFrameDescriptor.width(),
+                      vsFrameDescriptor.height(),
+                      vsFrameDescriptor.fps(),
+                  )
+              )
+            } else {
+              Log.i(TAG, "Skipping unknown fourccFormat for UVC_VS_FRAME_FRAME_BASED")
+            }
+          }
+          UVC_VS_FRAME_H264,
+          UVC_VS_FRAME_VP8 -> {
+            if (fourccFormat == null) {
+              Log.d(
+                  TAG,
+                  "Skipping VS_FRAME descriptor $classSpecificSubtype ${usbVSFrameString(classSpecificSubtype)}",
+              )
+            } else {
+              Log.e(
+                  TAG,
+                  "Unexpected VS_FRAME descriptor $classSpecificSubtype ${usbVSFrameString(classSpecificSubtype)}",
+              )
+            }
+          }
+          // Video streaming frame color format
+          UVC_VS_FRAME_COLORFORMAT -> {
+            Log.i(TAG, "Skipping UVC_VS_FRAME_COLORFORMAT")
+          }
+          else -> {
+            Log.d(TAG, "Skipping Video streaming CS descriptor $classSpecificSubtype")
+          }
         }
       }
     }
@@ -126,17 +241,13 @@ class VideoStreamingConnection(
   }
 
   override fun close() {
-    Log.e(TAG, "close: disconnectUsbAudioStreamingNative", )
+    Log.i(TAG, "close")
     EventLooper.post {
-      Log.d("VideoStreamingDescriptor", "stopUsbVideoStreamingNative")
-      UsbVideoNativeLibrary.stopUsbVideoStreamingNative()
-      UsbVideoNativeLibrary.disconnectUsbVideoStreamingNative()
-      Log.i("VideoStreamingDescriptor", "Closing video streaming descriptor")
+      onClose.invoke()
+      Log.d(TAG, "Closing usb connection")
       usbDeviceConnection.close()
     }
   }
-
-  fun findBestVideoFormat(size: Size): VideoFormat? = findBestVideoFormat(size.width, size.height)
 
   fun findBestVideoFormat(width: Int, height: Int): VideoFormat? {
     if (videoFormats.isEmpty()) {
@@ -144,18 +255,31 @@ class VideoStreamingConnection(
     }
 
     return videoFormatFor(width, height).also {
-      Log.i(TAG, "Resolved video format for ${width}x${height} screen: $it")
+      Log.i(TAG, "Suggested video format for ${width}x${height} screen: $it")
     }
   }
 
   private fun videoFormatFor(width: Int, height: Int): VideoFormat? {
-    // match size at 60fps
-    matchExactSize(width, height, 60)?.let {
+    // match YUY2 at 60fps
+    matchExactFormatAndSizeWithMinFps("YUY2", width, height, 60)?.let {
       return it
     }
 
-    // match size at any fps
-    matchExactSize(width, height)?.let {
+    matchExactSizeWithDefaultMinFps(width, height, 60)?.let {
+      return it
+    }
+
+    // match size and any format with min 60fps
+    matchExactSizeWithMinFps(width, height, 60)?.let {
+      return it
+    }
+
+    matchExactSizeWithDefaultMinFps(width, height, 30)?.let {
+      return it
+    }
+
+    // match size and any format with min 30fps
+    matchExactSizeWithMinFps(width, height, 30)?.let {
       return it
     }
 
@@ -173,12 +297,53 @@ class VideoStreamingConnection(
     return matchClosetArea(width, height)
   }
 
-  fun matchExactSize(width: Int, height: Int, fps: Int = 0): VideoFormat? {
+  fun matchExactFormatAndSizeWithDefaultMinFps(
+      fourccFormat: String,
+      width: Int,
+      height: Int,
+      fps: Int,
+  ): VideoFormat? {
+    return videoFormats.find {
+      fourccFormat == it.fourccFormat &&
+          SUPPORTED_VIDEO_FOURCC_FORMATS.contains(it.fourccFormat) &&
+          width == it.width &&
+          height == it.height &&
+          it.isDefaultFps &&
+          it.fps >= fps
+    }
+  }
+
+  fun matchExactSizeWithDefaultMinFps(width: Int, height: Int, fps: Int): VideoFormat? {
     return videoFormats.find {
       SUPPORTED_VIDEO_FOURCC_FORMATS.contains(it.fourccFormat) &&
           width == it.width &&
           height == it.height &&
-          (fps == 0 || fps == it.fps)
+          it.isDefaultFps &&
+          it.fps >= fps
+    }
+  }
+
+  fun matchExactSizeWithMinFps(width: Int, height: Int, fps: Int): VideoFormat? {
+    return videoFormats.find {
+      SUPPORTED_VIDEO_FOURCC_FORMATS.contains(it.fourccFormat) &&
+          width == it.width &&
+          height == it.height &&
+          it.fps >= fps
+    }
+  }
+
+  fun matchExactFormatAndSizeWithMinFps(
+      fourccFormat: String,
+      width: Int,
+      height: Int,
+      fps: Int,
+  ): VideoFormat? {
+    return videoFormats.find {
+      fourccFormat == it.fourccFormat &&
+          SUPPORTED_VIDEO_FOURCC_FORMATS.contains(it.fourccFormat) &&
+          width == it.width &&
+          height == it.height &&
+          it.fps >= fps
     }
   }
 
@@ -215,15 +380,30 @@ class VideoStreamingConnection(
     return smallerHalf.maxByOrNull { it.area } ?: biggerHalf.minByOrNull { it.area }
   }
 
-  fun matchExact(formatToMatch: String, width: Int, height: Int, fps: Int): VideoFormat? {
-    return videoFormats.find {
-      it.fourccFormat == formatToMatch && it.width == width && it.height == height && it.fps == fps
-    }
-  }
+  private fun usbVSFormatString(formatType: Int): String =
+      when (formatType) {
+        UVC_VS_FORMAT_UNCOMPRESSED -> "VS_FORMAT_UNCOMPRESSED"
+        UVC_VS_FORMAT_MJPEG -> "VS_FORMAT_MJPEG"
+        UVC_VS_FORMAT_MJPEG2TS -> "VS_FORMAT_MJPEG2TS"
+        UVC_VS_FORMAT_DV -> "VS_FORMAT_DV"
+        UVC_VS_FORMAT_FRAME_BASED -> "VS_FORMAT_FRAME_BASED"
+        UVC_VS_FORMAT_STREAM_BASED -> "VS_FORMAT_STREAM_BASED"
+        UVC_VS_FORMAT_H264 -> "VS_FORMAT_H264"
+        UVC_VS_FORMAT_H264_SIMULCAST -> "VS_FORMAT_H264_SIMULCAST"
+        UVC_VS_FORMAT_VP8 -> "VS_FORMAT_VP8"
+        UVC_VS_FORMAT_VP8_SIMULCAST -> "VS_FORMAT_VP8_SIMULCAST"
+        else -> "$formatType"
+      }
 
-  fun matchFormat(formatToMatch: String): VideoFormat? {
-    return videoFormats.find { it.fourccFormat == formatToMatch }
-  }
+  private fun usbVSFrameString(frameType: Int): String =
+      when (frameType) {
+        UVC_VS_FRAME_UNCOMPRESSED -> "VS_FRAME_UNCOMPRESSED"
+        UVC_VS_FRAME_MJPEG -> "VS_FRAME_MJPEG"
+        UVC_VS_FRAME_FRAME_BASED -> "VS_FRAME_FRAME_BASED"
+        UVC_VS_FRAME_H264 -> "VS_FRAME_H264"
+        UVC_VS_FRAME_VP8 -> "VS_FRAME_VP8"
+        else -> "$frameType"
+      }
 }
 
 fun Descriptor.isIADDescriptorWithVideoStreamingFunction(): Boolean {
@@ -242,6 +422,27 @@ fun Descriptor.isInterfaceDescriptorWithVideoStreaming(): Boolean {
       buffer.getBInt(offset + 6) == USB_SUBCLASS_VIDEO_STREAMING
 }
 
+fun Descriptor.isClassSpecificInterfaceDescriptor(): Boolean {
+  return bDescriptorType == USB_DT_CLASSSPECIFIC_INTERFACE
+}
+
+fun Descriptor.getBIntAt(index: Int): Int {
+  return buffer.getBInt(offset + index)
+}
+
+fun Descriptor.getWIntAt(index: Int): Int {
+  return buffer.getWInt(offset + index)
+}
+
+fun Descriptor.getDWIntAt(index: Int): Int {
+  return buffer.getInt(offset + index)
+}
+
+fun Descriptor.classSpecificSubtype(): Int {
+  require(bDescriptorType == USB_DT_CLASSSPECIFIC_INTERFACE)
+  return buffer.getBInt(offset + 2)
+}
+
 fun Descriptor.isVSUncompressedFormatTypeDescriptor(): Boolean {
   return bDescriptorType == USB_DT_CLASSSPECIFIC_INTERFACE &&
       buffer.getBInt(offset + 2) == UVC_VS_FORMAT_UNCOMPRESSED
@@ -250,6 +451,12 @@ fun Descriptor.isVSUncompressedFormatTypeDescriptor(): Boolean {
 fun Descriptor.isMJPEGVideoFormatDescriptor(): Boolean {
   return bDescriptorType == USB_DT_CLASSSPECIFIC_INTERFACE &&
       buffer.getBInt(offset + 2) == UVC_VS_FORMAT_MJPEG
+}
+
+fun Descriptor.isH264VideoFrameBasedFormatDescriptor(): Boolean {
+  return bDescriptorType == USB_DT_CLASSSPECIFIC_INTERFACE &&
+      buffer.getBInt(offset + 2) == UVC_VS_FORMAT_FRAME_BASED &&
+      buffer.getGuidFourccFormat(offset + 5) == "H264"
 }
 
 fun Descriptor.isVSFrameDescriptor(): Boolean {
@@ -267,10 +474,13 @@ data class VideoFormat(
     val width: Int,
     val height: Int,
     val fps: Int,
+    val isDefaultFps: Boolean = false,
 ) {
-  override fun toString(): String = "$fourccFormat ${width}x$height @$fps"
+  val size: Size = Size(width, height)
 
-  fun label(): String = "$fourccFormat ${width}x$height @$fps"
+  override fun toString(): String = "$fourccFormat ${width}x$height @${fps}fps"
+
+  fun label(): String = "$fourccFormat ${width}x$height @${fps}fps"
 
   val aspectRatio: Pair<Int, Int> = aspectRatio(width, height)
   val aspectRatioFloat: Float = width.toFloat() / height.toFloat()
@@ -408,7 +618,64 @@ class VSFrameDescriptor(pack: ByteBuffer) {
   val dwMaxBitRate: Int = pack.getInt()
   val dwMaxVideoFrameBufferSize: Int = pack.getInt()
   val dwDefaultFrameInterval: Int = pack.getInt()
+  // The range of frame intervals can be either a continuous range or a discrete set
+  val bFrameIntervalType: Int = pack.getBInt() // 0: Continuous 1-255: Discrete (n)
+  val adwFrameIntervals: IntArray =
+      if (bFrameIntervalType == 0) { // continuous range
+        // Next three double wide ints specify dwMinFrameInterval, dwMaxFrameInterval and
+        // dwFrameIntervalStep
+        (pack.getInt()..pack.getInt()).step(min(1, pack.getInt())).map { it }.toIntArray()
+      } else { // discrete set
+        IntArray(bFrameIntervalType) { pack.getInt() }
+      }
+
+  fun width(): Int = wWidth
+
+  fun height(): Int = wHeight
+
+  // video frame intervals are in 100ns units
+  fun fpsList(): List<Int> = adwFrameIntervals.map { 10_000_000 / it }
+
+  // video frame intervals are in 100ns units
+  fun defaultFps(): Int = 10_000_000 / dwDefaultFrameInterval
+}
+
+/**
+ * VS Frame based payload Frame Type Descriptor. This descriptor type is for parsing H264 frame
+ * spec.
+ * <pre>
+ *         ----- VS Frame Based Payload Frame Type Descriptor ----
+ * *!*ERROR  bDescriptorSubtype did not exist in UVC 1.0
+ * bLength                  : 0x1E (30 bytes)
+ * bDescriptorType          : 0x24 (Video Streaming Interface)
+ * bDescriptorSubtype       : 0x11 (Frame Based Payload Frame Type)
+ * bFrameIndex              : 0x01
+ * bmCapabilities           : 0x00
+ * wWidth                   : 0x0780 (1920)
+ * wHeight                  : 0x0438 (1080)
+ * dwMinBitRate             : 0x00708000 (7372800 bps -> 921.500 KB/s)
+ * dwMaxBitRate             : 0x00708000 (7372800 bps -> 921.500 KB/s)
+ * dwDefaultFrameInterval   : 0x00051615 (33.3333 ms -> 30.0000 fps)
+ * bFrameIntervalType       : 0x01 (1 discrete frame interval supported)
+ * dwBytesPerLine           : 0x00 (0 bytes)
+ * adwFrameInterval[1]      : 0x00051615 (33.3333 ms -> 30.0000 fps)
+ * Data (HexDump)           : 1E 24 11 01 00 80 07 38 04 00 80 70 00 00 80 70   .$.....8...p...p
+ *                            00 15 16 05 00 01 00 00 00 00 15 16 05 00         ..............
+ * </pre>
+ */
+class VSFrameBasedFrameDescriptor(pack: ByteBuffer) {
+  val bLength: Int = pack.getBInt()
+  val bDescriptorType: Int = pack.getBInt()
+  val bDescriptorSubtype: Int = pack.getBInt()
+  val bFrameIndex: Int = pack.getBInt()
+  val bmCapabilities: Int = pack.getBInt()
+  val wWidth: Int = pack.getWInt()
+  val wHeight: Int = pack.getWInt()
+  val dwMinBitRate: Int = pack.getInt()
+  val dwMaxBitRate: Int = pack.getInt()
+  val dwDefaultFrameInterval: Int = pack.getInt()
   val bFrameIntervalType: Int = pack.getBInt()
+  val dwBytesPerLine: Int = pack.getInt()
 
   fun width(): Int = wWidth
 
@@ -425,7 +692,6 @@ class VSFrameDescriptor(pack: ByteBuffer) {
   }
 }
 
-/** Must be kept in-sync with https://fburl.com/code/kzplsk2y. */
 enum class LibuvcFrameFormat {
   /** Any supported format */
   UVC_FRAME_FORMAT_ANY,
