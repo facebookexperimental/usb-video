@@ -55,7 +55,7 @@ limitations under the License.
       />
   <TextView
       android:id="@+id/app_requirements"
-      android:layout_width="280dp"
+      android:layout_width="wrap_content"
       android:layout_height="wrap_content"
       android:layout_marginTop="8dp"
       style="@style/Body1"
