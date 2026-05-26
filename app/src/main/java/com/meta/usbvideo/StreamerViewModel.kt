@@ -445,15 +445,30 @@ class StreamerViewModel(
   }
 
   private val usbPermissionReceiver: BroadcastReceiver =
-      object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-          if (intent.action != ACTION_USB_PERMISSION) {
-            return
-          }
-          Log.i(TAG, "Received broadcast for $ACTION_USB_PERMISSION")
+    object : BroadcastReceiver() {
+      override fun onReceive(context: Context, intent: Intent) {
+
+        Log.i(TAG, "USB permission broadcast received")
+
+        val granted = intent.getBooleanExtra(
+          UsbManager.EXTRA_PERMISSION_GRANTED,
+          false
+        )
+
+        val device = intent.getParcelableExtra(
+          UsbManager.EXTRA_DEVICE,
+          UsbDevice::class.java
+        )
+
+        Log.i(TAG, "granted=$granted device=$device")
+
+        if (granted) {
           usbmon.onUsbPermissionResult()
+        } else {
+          Log.e(TAG, "USB permission denied by system")
         }
       }
+    }
 
   private val usbReceiver: BroadcastReceiver =
       object : BroadcastReceiver() {
