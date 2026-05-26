@@ -427,7 +427,7 @@ class StreamerViewModel(
       PendingIntent.getBroadcast(
           context,
           0,
-          Intent(ACTION_USB_PERMISSION),
+          Intent(ACTION_USB_PERMISSION).setPackage(context.packageName),
           PendingIntent.FLAG_IMMUTABLE,
       )
     }
