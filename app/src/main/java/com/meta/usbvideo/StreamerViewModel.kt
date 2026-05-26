@@ -425,10 +425,11 @@ class StreamerViewModel(
   fun requestUsbPermission(context: Context) {
     usbmon.requestUsbPermission {
       PendingIntent.getBroadcast(
-          context,
-          0,
-          Intent(ACTION_USB_PERMISSION).setPackage(context.packageName),
-          PendingIntent.FLAG_IMMUTABLE,
+        context,
+        0,
+        Intent(ACTION_USB_PERMISSION)
+          .setPackage(context.packageName),
+        PendingIntent.FLAG_MUTABLE,
       )
     }
   }
