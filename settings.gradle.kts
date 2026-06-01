@@ -36,3 +36,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "USB Video"
 include(":app")
+include(":UsbVideoUnityBridge")
