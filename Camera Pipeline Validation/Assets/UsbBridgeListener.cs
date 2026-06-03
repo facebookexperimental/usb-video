@@ -1,40 +1,66 @@
 using UnityEngine;
+using System;
 
 public class UsbBridgeListener : MonoBehaviour
 {
+    public Renderer targetRenderer;
+
     private Texture2D tex;
     private int textureId;
+
     private AndroidJavaClass bridgeClass;
-    private bool isTextureInitialized = false;
+    private IntPtr nativeRenderEventFunc;
+
+    private bool initialized;
 
     void Start()
     {
-        Debug.Log("Initializing SurfaceTexture Pipeline...");
+        Debug.Log("bladibo");
 
-        // 1. Setup target buffer resolution matching your UVC stream
-        tex = new Texture2D(1920, 1080, TextureFormat.RGBA32, false);
-        tex.filterMode = FilterMode.Bilinear;
-        tex.Apply(); 
+        // 1. Create Unity texture (GPU owned by Unity)
+        tex = new Texture2D(
+            1920,
+            1080,
+            TextureFormat.RGBA32,
+            false,
+            true
+        );
 
-        // 2. Fetch the OpenGLES texture tracking ID
+        tex.Apply();
+
+        targetRenderer.material.mainTexture = tex;
+
         textureId = tex.GetNativeTexturePtr().ToInt32();
 
-        // 3. Apply the custom URP OES shader material to your quad/mesh
-        GetComponent<Renderer>().material.mainTexture = tex;
+        Debug.Log("Unity texture id = " + textureId);
 
-        // 4. Initialize the Android plugin and hand over the ID
-        bridgeClass = new AndroidJavaClass("com.beanotherlab.usbvideounitybridge.UsbBridge");
-        bridgeClass.CallStatic("createSurfaceTexture", textureId);
-        
-        isTextureInitialized = true;
+        // 2. Bind Android bridge
+        bridgeClass = new AndroidJavaClass(
+            "com.beanotherlab.usbvideounitybridge.UsbBridge"
+        );
+
+        bridgeClass.CallStatic("create", textureId);
+        Debug.Log("[UNITY] create() called");
+
+        initialized = true;
     }
 
     void Update()
     {
-        // 5. Pull incoming C++ frames into the visible Unity material context
-        if (isTextureInitialized && bridgeClass != null)
-        {
-            bridgeClass.CallStatic("updateTexture");
-        }
+        if (!initialized) return;
+
+        // 3. Render thread trigger (Saki pattern)
+        GL.IssuePluginEvent(GetRenderEventFunc(), 1);
     }
+
+    private IntPtr GetRenderEventFunc()
+    {
+        if (nativeRenderEventFunc == IntPtr.Zero)
+        {
+            nativeRenderEventFunc =
+                NativePlugin.GetRenderEventFunc(); // from plugin
+        }
+        return nativeRenderEventFunc;
+    }
+    
 }

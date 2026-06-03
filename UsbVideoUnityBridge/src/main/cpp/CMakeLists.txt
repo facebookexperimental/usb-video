@@ -2,19 +2,32 @@ cmake_minimum_required(VERSION 3.22.1)
 
 project(usbvideounitybridge)
 
-add_library (
+add_library(
         usbvideo
         SHARED
         usbvideo_jni.cpp
+        usb_render.cpp
+        unity_plugin.cpp
 )
 
-find_library (
+find_library(
         log-lib
         log
 )
 
-target_link_libraries (
+find_library(
+        android-lib
+        android
+)
+
+find_library(
+        GLESv2-lib
+        GLESv2
+)
+
+target_link_libraries(
         usbvideo
         ${log-lib}
-        android
+        ${android-lib}
+        ${GLESv2-lib}
 )

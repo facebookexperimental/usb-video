@@ -1,20 +1,25 @@
 #include <jni.h>
-#include <android/native_window_jni.h>
 #include <android/log.h>
+#include <GLES2/gl2.h>
+#include "usb_shared.h"
+
+GLuint g_unityTex = 0;   // ONLY HERE (single definition)
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_beanotherlab_usbvideounitybridge_UsbBridge_nativeSetSurface(JNIEnv *env, jobject thiz, jobject surface) {
+Java_com_beanotherlab_usbvideounitybridge_UsbBridge_nativeInit(
+        JNIEnv* env,
+        jobject thiz,
+        jint texId)
+{
+    g_unityTex = (GLuint)texId;
 
-    ANativeWindow* window = ANativeWindow_fromSurface(env, surface);
+    __android_log_print(
+            ANDROID_LOG_INFO,
+            "USB",
+            "Unity texture bound: %d",
+            g_unityTex
+    );
 
-    if (window)
-    {
-        __android_log_print(ANDROID_LOG_INFO,"USB_BRIDGE","ANativeWindow acquired");
-    }
-    else
-    {
-    __android_log_print(ANDROID_LOG_ERROR,"USB_BRIDGE","FAILED to acquire ANativeWindow");
-    }
-
+    // init camera / uvc pipeline here
 }
