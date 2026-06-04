@@ -1,0 +1,196 @@
+🧠 Current status (what is working)
+✅ Unity side is working
+Your Texture2D pipeline is alive
+Coroutine pixel test works in:
+Editor ✔
+Quest ✔
+That proves:
+Unity rendering path is fine
+Material + shader binding is fine
+Texture updates via CPU (SetPixel + Apply) are valid
+
+So Unity is NOT the problem anymore.
+
+✅ Android ↔ Unity bridge is partially working
+
+From your logs:
+
+nativeInit() is called ✔
+Texture ID is passed correctly ✔
+RenderEvent is firing ✔
+render_frame ENTER logs ✔
+binding texture=79 ✔
+
+So:
+
+JNI → plugin → render thread callback chain is functional
+
+This is already a big win.
+
+⚠️ Native rendering is crashing at GPU boundary
+
+Your crash:
+
+SIGSEGV inside libGLESv2_adreno.so
+thread: UnityGfxDeviceW
+
+Meaning:
+
+Crash is NOT JNI
+Crash is NOT Unity C#
+Crash is inside GPU driver during GL call
+
+So the failure is here:
+
+glTexSubImage2D or texture usage assumptions are invalid
+
+💥 Root problems identified
+1. ❌ You are treating Unity texture like a CPU-owned GL texture
+
+This is the biggest misconception.
+
+Unity textures:
+
+are GPU-owned
+may be:
+compressed
+special internal format
+not valid for external GL writes
+not safe for raw glTexSubImage2D
+
+So this is dangerous:
+
+glBindTexture(GL_TEXTURE_2D, g_unityTex);
+glTexSubImage2D(...)
+
+👉 This is very likely what triggers the Adreno crash.
+
+2. ❌ Texture format mismatch (very likely)
+
+You assumed:
+
+RGBA8 1920x1080 linear texture
+
+But Unity might actually give:
+
+different internal format
+or non-writable surface
+or OES external texture
+3. ❌ Mixing “Unity Texture2D” with native GL writes
+
+There are only 2 valid architectures:
+
+🧭 What you accidentally built (hybrid trap)
+
+You tried:
+
+Unity Texture2D
+        ↓
+native plugin writes via glTexSubImage2D
+
+❌ This is NOT guaranteed valid in Unity.
+
+✅ Correct architecture options (choose one)
+🟢 OPTION A (SAFE + SIMPLE): CPU texture upload (what your test proves)
+
+Unity side:
+
+tex.SetPixels(...)
+tex.Apply()
+
+Native side:
+
+DO NOT write GL texture
+ONLY generate CPU buffer
+
+✔ stable
+✔ portable
+❌ slower
+
+🟡 OPTION B (recommended for USB video)
+
+Unity owns texture, native only provides pixel buffer:
+
+Unity:
+tex.LoadRawTextureData(ptr);
+tex.Apply();
+Native:
+decode USB frame → CPU buffer
+no GL calls at all
+
+✔ stable
+✔ fast enough
+✔ no driver crashes
+
+🔴 OPTION C (advanced GPU path - what you tried)
+
+You tried:
+
+native plugin → glTexSubImage2D → Unity texture
+
+This ONLY works if:
+
+Unity explicitly gives you a real GL texture ID
+AND it is not protected
+AND correct context is active
+AND format matches exactly
+
+Right now: ❌ not guaranteed
+
+🧪 What your current logs prove
+You have achieved:
+full JNI bridge
+render callback timing
+texture ID passing
+thread execution correctness
+You have NOT yet achieved:
+safe GPU texture interop
+stable GL write path
+🚨 Why the crash happens exactly on “binding texture”
+
+Even though glBindTexture is innocent:
+
+The crash happens on:
+
+glTexSubImage2D(...)
+
+because Adreno driver likely detects:
+
+invalid internal texture object
+or wrong usage flag
+or Unity-managed surface
+
+and hard crashes instead of returning error
+
+🧭 What you should do next (clear direction)
+
+If your goal is USB video:
+
+👉 Stop using glTexSubImage2D on Unity textures
+
+Instead implement:
+
+✔ Step 1
+
+Replace native GL writes with CPU buffer output:
+
+uint8_t* frameBuffer;
+✔ Step 2
+
+Send buffer to Unity via:
+
+SetPixels32
+or LoadRawTextureData
+✔ Step 3
+
+Only Unity touches GPU texture
+
+💡 Key insight
+
+You already succeeded in the hard part:
+
+“getting native code to run on Unity render thread with correct timing”
+
+That’s usually the hardest part.
+
+Now you just need to fix the data path, not the execution path.
