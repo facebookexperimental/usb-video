@@ -291,9 +291,7 @@ class UsbMonitor(
     }
 
     val isMicMuted: Boolean = _micMutedState.value
-    return if (isMicMuted) {
-      SelectedUsbDevice(usbDevice, SelectedDeviceStatus.MIC_MUTED)
-    } else if (hasPermission(usbDevice)) {
+    return if (hasPermission(usbDevice)) {
       buildConnectedState(usbDevice)
     } else {
       SelectedUsbDevice(usbDevice, SelectedDeviceStatus.PERMISSION_REQUIRED)
