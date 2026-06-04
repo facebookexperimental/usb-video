@@ -390,6 +390,7 @@ GameObject:
   - component: {fileID: 471368792}
   - component: {fileID: 471368791}
   - component: {fileID: 471368795}
+  - component: {fileID: 471368796}
   m_Layer: 0
   m_Name: VideoQuad
   m_TagString: Untagged
@@ -442,7 +443,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 8a5eeee3ec44349baa2a47c62af0a8c4, type: 2}
+  - {fileID: 2100000, guid: 704aa03526af544c1bc4d6c2a78c4a01, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -497,6 +498,19 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 734a8cb18f7a847b3b4495bfd68748b0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  targetRenderer: {fileID: 471368792}
+--- !u!114 &471368796
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 471368790}
+  m_Enabled: 0
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 939b7b53129174b8cac981638e71584d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
 --- !u!1 &832575517
